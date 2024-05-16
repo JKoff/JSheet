@@ -1,17 +1,138 @@
 const BEGIN = Symbol('BEGIN');
-
 const verbs = {}, monads = {}, dyads = {};
-function registerVerb(name, monad, dyad) {
-    verbs[name] = true;
-    if (monad) {
-        monads[name] = monad;
+
+// Implements the J array data structure, or something like it.
+class JArray {
+    constructor(shape, data) {
+        this.shape = shape;
+        this.data = data;
+        if (this.shape.reduce((acc, val) => acc * val, 1) !== this.data.length) {
+            throw new Error(`Shape ${JSON.stringify(this.shape)} does not match data length ${this.data.length}`);
+        }
     }
-    if (dyad) {
-        dyads[name] = dyad;
+    * frames(rank) {
+        const itemShape = this.shape.slice(this.shape.length - rank);
+        const itemSize = itemShape.reduce((acc, val) => acc * val, 1);
+
+        const frameShape = this.shape.slice(0, this.shape.length - rank);
+        const frameSize = frameShape.reduce((acc, val) => acc * val, 1);
+
+        for (let i = 0; i < frameSize; i++) {
+            yield new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize));
+        }
+    }
+    map(rank, fn) {
+        const itemShape = this.shape.slice(this.shape.length - rank);
+        const itemSize = itemShape.reduce((acc, val) => acc * val, 1);
+
+        const frameShape = this.shape.slice(0, this.shape.length - rank);
+        const frameSize = frameShape.reduce((acc, val) => acc * val, 1);
+
+        const frames = new Array(frameSize).fill(0).map((_, i) => new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize)));
+        const processedFrames = frames.map(fn);
+
+        const resultShape = this.shape.slice(0, this.shape.length - rank).concat(...processedFrames[0].shape);
+        const result = new JArray(resultShape, Array.prototype.concat(...processedFrames.map(frame => frame.data)));
+
+        return result;
+    }
+    only() {
+        if (!(this.shape.length === 0 && this.data.length === 1)) {
+            throw new Error(`Expected an atom, got ${JSON.stringify(this.shape)} with length ${this.data.length}`);
+        }
+        return this.data[0];
     }
 }
-registerVerb('>:', x => x + 1, null);
-registerVerb('+', null, (x, y) => x + y);
+
+function atom(value) {
+    if (value instanceof JArray) {
+        throw new Error(`Did not expect a JArray to be passed into atom: ${JSON.stringify(value)}`);
+    }
+    return new JArray([], [value]);
+}
+
+class Monad {
+    constructor(name, fn, rank) {
+        this.name = name;
+        this.fn = fn;
+        this.rank = rank;
+    }
+    apply(arg) {
+        console.log('Evaluating Monad', this.name, 'with rank', this.rank, 'on', arg, 'result is', arg.map(this.rank, frame => this.fn(frame)));
+        return arg.map(this.rank, frame => this.fn(frame));
+    }
+}
+
+class Dyad {
+    constructor(name, fn, leftRank, rightRank) {
+        this.name = name;
+        this.fn = fn;
+        this.leftRank = leftRank;
+        this.rightRank = rightRank;
+    }
+    apply(left, right) {
+        // Agreement rule:
+        // If the left and right frames are the same then there is no problem.
+        // Otherwise, one frame must be a prefix of the other, and its cells are repeated into its trailing axes to provide the required arguments.
+        // let i = 0, j = 0;
+        // while (i < left.shape.length && j < right.shape.length) {
+        // }
+        const leftGen = left.frames(this.leftRank);
+        const rightGen = right.frames(this.rightRank);
+
+        const results = [];
+
+        do {
+            const leftNext = leftGen.next();
+            const rightNext = rightGen.next();
+
+            if (leftNext.done || rightNext.done) {
+                // TODO: We can repeat one of the frames to match the other.
+                break;
+            }
+
+            const leftFrame = leftNext.value;
+            const rightFrame = rightNext.value;
+            
+            if (leftFrame.shape.length !== rightFrame.shape.length) {
+                throw new Error(`Frame shapes do not match in ${this.name}: ${JSON.stringify(leftFrame.shape)} vs ${JSON.stringify(rightFrame.shape)}`);
+            }
+
+            results.push(this.fn(leftFrame, rightFrame));
+        } while (true);
+
+        const result = new JArray(
+            left.shape.slice(0, left.shape.length - this.leftRank).concat(...results[0].shape),
+            Array.prototype.concat(...results.map(frame => frame.data))
+        );
+        console.log('Evaluating Dyad', this.name, 'with left rank', this.leftRank, 'on', left, 'and right rank', this.rightRank, 'on', right, 'result is', result);
+
+        return result;
+    }
+}
+
+class VerbBuilder {
+    constructor(name) {
+        this.name = name;
+    }
+    withMonad(monad, rank) {
+        this.monad = new Monad(this.name, monad, rank);
+        return this;
+    }
+    withDyad(dyad, leftRank, rightRank) {
+        this.dyad = new Dyad(this.name, dyad, leftRank, rightRank);
+        return this;
+    }
+    register() {
+        verbs[this.name] = this;
+        if (this.monad) monads[this.name] = this.monad;
+        if (this.dyad) dyads[this.name] = this.dyad;
+    }
+}
+
+new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).fill(0).map((_, idx) => idx)), 1).register();
+new VerbBuilder('>:').withMonad(x => atom(x.only() + 1), 0).register();
+new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only()), 0, 0).register();
 
 function tokenize(code) {
     const tokens = [BEGIN];
@@ -54,18 +175,18 @@ function reduce(stack) {
         | § =. =: ( A V N       | N | V | N         | 2 Dyad |
     */
     if ([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 && classify(stack[1]) === 'V' && classify(stack[2]) === 'N' &&
-                monads[stack[1]]) {
-        stack.splice(1, 2, monads[stack[1]](stack[2]));
+        monads[stack[1]]) {
+        stack.splice(1, 2, monads[stack[1]].apply(stack[2]));
         return true;
     } else if (([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 || ['A', 'V', 'N'].indexOf(classify(stack[0])) !== -1) &&
-                classify(stack[1]) === 'V' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
-                monads[stack[2]]) {
-        stack.splice(2, 2, monads[stack[2]](stack[3]));
+        classify(stack[1]) === 'V' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
+        monads[stack[2]]) {
+        stack.splice(2, 2, monads[stack[2]].apply(stack[3]));
         return true;
     } else if (([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 || ['A', 'V', 'N'].indexOf(classify(stack[0])) !== -1) &&
-                classify(stack[1]) === 'N' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
-                dyads[stack[2]]) {
-        stack.splice(1, 3, dyads[stack[2]](stack[1], stack[3]));
+        classify(stack[1]) === 'N' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
+        dyads[stack[2]]) {
+        stack.splice(1, 3, dyads[stack[2]].apply(stack[1], stack[3]));
         return true;
     }
 
@@ -76,11 +197,11 @@ function evaluateToken(token, lookupFn) {
     if (token === BEGIN) {
         return token;
     } else if (!isNaN(parseInt(token, 10))) {
-        return parseInt(token, 10);
+        return new JArray([], [parseInt(token, 10)]);
     } else if (verbs[token] !== undefined) {
         return token;
     } else if (lookupFn(token) !== null) {
-        return lookupFn(token);
+        return lookupFn(token) instanceof JArray ? lookupFn(token) : new JArray([], [lookupFn(token)]);
     } else {
         throw new Error(`Unknown symbol: ${token}`);
     }
@@ -96,16 +217,16 @@ function runJFragment(code, lookupFn) {
     while (tokens.length > 0) {
         const tail = tokens.pop();
         const tail2 = evaluateToken(tail, lookupFn);
-        console.log('Parsed', tail, 'to', tail2);
         stack.splice(0, 0, tail2);
         while (reduce(stack)) {
             console.log('Stack', stack);
         }
     }
 
+    console.log('Finished with stack', stack);
     return stack[1];
 };
 
 if (typeof module !== 'undefined') {
-    module.exports = runJFragment;
+    module.exports = { runJFragment, JArray };
 }
