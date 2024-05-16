@@ -12,7 +12,7 @@
 <script src="eval.js"></script>
 <script src="grid.js"></script>
 <script>
-    const state = { display: {}, data: {}, code: {}, format: {} };
+    let state = JSON.parse(localStorage.getItem('state')) || { display: {}, data: {}, code: {}, format: {} };
 
     const modes = ['display', 'data', 'code', 'format'];
     let modeidx = 0;
@@ -43,6 +43,7 @@
                 console.log(`updated ${cell.id}'s display state to ${state.display[cell.id]}`);
             }
             cell.blur();
+            localStorage.setItem('state', JSON.stringify(state));
         }
     }
 
