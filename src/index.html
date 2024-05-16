@@ -37,7 +37,7 @@
                 state.display[cell.id] = cell.value;
                 console.log(`updated ${cell.id}'s display state to ${state.display[cell.id]}`);
             } else if (mode() === 'code') {
-                state.display[cell.id] = runJFragment(cell.value);
+                state.display[cell.id] = runJFragment(cell.value, symbol => parseInt(state.display[symbol], 10) || null);
                 state.format[cell.id] = state.format[cell.id] || {};
                 state.format[cell.id].computed = true;
                 console.log(`updated ${cell.id}'s display state to ${state.display[cell.id]}`);
