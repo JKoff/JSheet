@@ -1,0 +1,9 @@
+<textarea id="src"></textarea>
+<button id="execute">Execute</button>
+
+<script src="eval.js"></script>
+<script>
+    document.querySelector('#execute').onclick = () => eval(document.querySelector('#src').value);
+
+    console.log(runJFragment('100'));
+</script>
