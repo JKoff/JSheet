@@ -1,9 +1,71 @@
-<textarea id="src"></textarea>
-<button id="execute">Execute</button>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>JSheet</title>
+    <link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header></header>
+
+<div id="grid"></div>
 
 <script src="eval.js"></script>
+<script src="grid.js"></script>
 <script>
-    document.querySelector('#execute').onclick = () => eval(document.querySelector('#src').value);
+    const state = { display: {}, data: {}, code: {}, format: {} };
 
-    console.log(runJFragment('100'));
+    const modes = ['display', 'data', 'code', 'format'];
+    let modeidx = 0;
+    function mode() { return modes[modeidx]; }
+    function renderMode() {
+        document.querySelector('header').innerHTML = `${mode()} view`;
+        const editable = mode() === 'data' || mode() === 'code' || mode() === 'format';
+        document.querySelectorAll('.cell').forEach(cell => {
+            cell.disabled = !editable;
+            cell.dataset.populated = !modes.every(mo => mo === mode() || !state[mo][cell.id]);
+            cell.dataset.computed = state.format[cell.id] && state.format[cell.id].computed;
+            cell.value = state[mode()][cell.id] || '';
+            cell.placeholder = state.display[cell.id] || '';
+        });
+    }
+
+    function commitCell(cell) {
+        if (cell) {
+            state[mode()][cell.id] = cell.value;
+            console.log(`updated ${cell.id}'s ${mode()} state to ${cell.value}`);
+            if (mode() === 'data') {
+                state.display[cell.id] = cell.value;
+                console.log(`updated ${cell.id}'s display state to ${state.display[cell.id]}`);
+            } else if (mode() === 'code') {
+                state.display[cell.id] = runJFragment(cell.value);
+                state.format[cell.id] = state.format[cell.id] || {};
+                state.format[cell.id].computed = true;
+                console.log(`updated ${cell.id}'s display state to ${state.display[cell.id]}`);
+            }
+            cell.blur();
+        }
+    }
+
+    document.body.addEventListener('keydown', e => {
+        if (e.key === 'Enter') {
+            commitCell(document.querySelector('.cell:focus'));
+            e.preventDefault();
+        } else if (e.key === '`') {
+            commitCell(document.querySelector('.cell:focus'));
+            e.preventDefault();
+            modeidx = (modeidx + 1) % modes.length;
+            renderMode();
+        }
+    }, { capture: true });
+
+    document.body.addEventListener('blur', e => {
+        if (e.target.classList.contains('cell')) {
+            commitCell(e.target);
+        }
+    }, { capture: true });
+
+    document.querySelector('#grid').replaceWith(renderGrid(state));
+    renderMode();
 </script>
+</body>
+</html>

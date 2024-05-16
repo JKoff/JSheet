@@ -79,4 +79,6 @@ function runJFragment(code) {
     return stack[1];
 };
 
-module.exports = runJFragment;
+if (typeof module !== 'undefined') {
+    module.exports = runJFragment;
+}
