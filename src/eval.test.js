@@ -25,6 +25,9 @@ describe('runJFragment', function () {
   it('can increment a sequence of integers', function () {
     expect(runJFragment('>: i. 3', () => null)).toMatchObject({ shape: [3], data: [1, 2, 3] });
   });
+  it('can increment a sequence of integers with a dyad', function () {
+    expect(runJFragment('1 + i. 3', () => null)).toMatchObject({ shape: [3], data: [1, 2, 3] });
+  });
   // it('can sum two lists of integers', function () {
   //   expect(runJFragment('0 1 2 + 00 10 20', () => null)).toMatchObject({ shape: [3], data: [0, 11, 22] });
   // });

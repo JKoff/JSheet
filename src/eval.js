@@ -10,15 +10,21 @@ class JArray {
             throw new Error(`Shape ${JSON.stringify(this.shape)} does not match data length ${this.data.length}`);
         }
     }
-    * frames(rank) {
+    numItems(rank) {
+        const frameShape = this.shape.slice(0, this.shape.length - rank);
+        return frameShape.reduce((acc, val) => acc * val, 1);
+    }
+    * frames(rank, repetitions = 1) {
         const itemShape = this.shape.slice(this.shape.length - rank);
         const itemSize = itemShape.reduce((acc, val) => acc * val, 1);
 
         const frameShape = this.shape.slice(0, this.shape.length - rank);
-        const frameSize = frameShape.reduce((acc, val) => acc * val, 1);
+        const numItems = frameShape.reduce((acc, val) => acc * val, 1);
 
-        for (let i = 0; i < frameSize; i++) {
-            yield new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize));
+        for (let j = 0; j < repetitions; j++) {
+            for (let i = 0; i < numItems; i++) {
+                yield new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize));
+            }
         }
     }
     map(rank, fn) {
@@ -74,11 +80,12 @@ class Dyad {
         // Agreement rule:
         // If the left and right frames are the same then there is no problem.
         // Otherwise, one frame must be a prefix of the other, and its cells are repeated into its trailing axes to provide the required arguments.
-        // let i = 0, j = 0;
-        // while (i < left.shape.length && j < right.shape.length) {
-        // }
-        const leftGen = left.frames(this.leftRank);
-        const rightGen = right.frames(this.rightRank);
+
+        const leftFS = left.numItems(this.leftRank);
+        const rightFS = right.numItems(this.rightRank);
+
+        const leftGen = left.frames(this.leftRank, leftFS < rightFS ? rightFS / leftFS : 1);
+        const rightGen = right.frames(this.rightRank, rightFS < leftFS ? leftFS / rightFS : 1);
 
         const results = [];
 
@@ -87,7 +94,6 @@ class Dyad {
             const rightNext = rightGen.next();
 
             if (leftNext.done || rightNext.done) {
-                // TODO: We can repeat one of the frames to match the other.
                 break;
             }
 
@@ -102,7 +108,9 @@ class Dyad {
         } while (true);
 
         const result = new JArray(
-            left.shape.slice(0, left.shape.length - this.leftRank).concat(...results[0].shape),
+            leftFS > rightFS ?
+                left.shape.slice(0, left.shape.length - this.leftRank).concat(...results[0].shape) :
+                right.shape.slice(0, right.shape.length - this.rightRank).concat(...results[0].shape),
             Array.prototype.concat(...results.map(frame => frame.data))
         );
         console.log('Evaluating Dyad', this.name, 'with left rank', this.leftRank, 'on', left, 'and right rank', this.rightRank, 'on', right, 'result is', result);
@@ -201,7 +209,8 @@ function evaluateToken(token, lookupFn) {
     } else if (verbs[token] !== undefined) {
         return token;
     } else if (lookupFn(token) !== null) {
-        return lookupFn(token) instanceof JArray ? lookupFn(token) : new JArray([], [lookupFn(token)]);
+        const value = lookupFn(token);
+        return value instanceof JArray ? value : new JArray([], [value]);
     } else {
         throw new Error(`Unknown symbol: ${token}`);
     }
@@ -217,6 +226,7 @@ function runJFragment(code, lookupFn) {
     while (tokens.length > 0) {
         const tail = tokens.pop();
         const tail2 = evaluateToken(tail, lookupFn);
+        console.log('Tail', tail, 'Tail2', tail2);
         stack.splice(0, 0, tail2);
         while (reduce(stack)) {
             console.log('Stack', stack);

@@ -1,10 +1,7 @@
 body {
     margin: 0;
     display: grid;
-    grid: 30px calc(100vh - 30px) / 100vw;
-}
-header {
-    text-transform: uppercase;
+    grid: 100vh / 100vw;
 }
 .grid {
     display: grid;
@@ -14,10 +11,14 @@ header {
 .cell {
     border: 1px solid oklch(0.93 0 0);
     margin: 0 0 -1px -1px;
+    padding: 0.15em;
+    position: relative;
+    resize: none;
 }
-.cell[data-populated=true] {
-    background-color: oklch(0.93 0 0);
-}
-.cell[data-computed=true] {
+.cell[data-populated=true][data-computed=false]::after {
+    content: " ";
     background-color: oklch(70% 0.1 206);
+    position: absolute; top: 4px; right: 4px;
+    width: 0.5em; height: 0.5em;
+    border-radius: 0.5em;
 }
