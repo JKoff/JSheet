@@ -11,160 +11,120 @@
 <script src="eval.js"></script>
 <script src="grid.js"></script>
 <script>
-    let state = JSON.parse(localStorage.getItem('state')) || { display: {}, code: {}, results: {} };
-    let renderState = { focus: null, dirty: new Set() };
-    let refreshTimeout = null;
+    let state = JSON.parse(localStorage.getItem('state')) || { display: {}, code: {}, results: {}, inputs: {}, parent: {} };
+    if (!state.inputs) state.inputs = {};
+    if (!state.parent) state.parent = {};
 
-    function requestFocus(cell) {
-        if (cell === renderState.focus) {
+    const computeState = { dirty: new Set() };
+
+    function downstreamCells(id) {
+        return Object.keys(state.inputs).filter(k => state.inputs[k].includes(id));
+
+    }
+
+    function refreshEffects() {
+        const seen = new Set();
+        const stack = Array.from(computeState.dirty);
+        while (stack.length > 0) {
+            const id = stack.pop();
+            if (seen.has(id)) continue;
+            seen.add(id);
+
+            if (state.code[id]) {
+                setCellCode(id, state.code[id], state.parent[id]);
+                unrollCodeCell(id);
+            } else {
+                setCellDisplay(id, state.display[id], state.parent[id]);
+            }
+
+            stack.push(...downstreamCells(id));
+        }
+        computeState.dirty.clear();
+    }
+
+    function setCellCode(id, code) {
+        state.inputs[id] = [];
+        state.code[id] = code;
+
+        try {
+            state.results[id] = runJFragment(code, symbol => {
+                const val = state.results[symbol] || parseInt(state.display[symbol], 10) || null;
+                if (val !== null && !state.inputs[id].includes(symbol)) {
+                    state.inputs[id].push(symbol);
+                }
+                return val;
+            });
+        } catch (e) {
+            console.log('Error running J fragment:', e.message)
+        }
+
+        requestRefresh(id);
+        computeState.dirty.add(id);
+    }
+
+    function setCellDisplay(id, display, parentId) {
+        state.parent[id] = parentId;
+        state.display[id] = display;
+
+        requestRefresh(id);
+        computeState.dirty.add(id);
+    }
+
+    function unrollCodeCell(id) {
+        const result = state.results[id];
+        if (result === undefined) {
             return;
         }
-        if (renderState.focus !== null) {
-            requestBlur(renderState.focus);
-        }
-        renderState.focus = cell;
-        requestRefresh(cell);
-    }
-    function requestBlur(cell) {
-        renderState.focus = null;
-        requestRefresh(cell);
-    }
-    function requestRefresh(cell) {
-        renderState.dirty.add(cell);
-        if (refreshTimeout === null) {
-            refreshTimeout = setTimeout(refresh, 0);
-        }
-    }
-    function refresh() {
-        for (let cell of renderState.dirty) {
-            const row = parseInt(cell.match(/R(\d+)/)[1], 10);
-            const col = parseInt(cell.match(/C(\d+)/)[1], 10);
-            const focus = cell === renderState.focus;
-            const el = document.querySelector(`#${cell}`);
-            const newEl = renderCell(state, el.dataset.row, el.dataset.col, focus);
-            el.replaceWith(newEl);
-            if (focus) {
-                newEl.focus();
-            } else if (renderState.focus === null && document.activeElement === newEl) {
-                newEl.blur();
+        const cell = document.getElementById(id);
+        const startRow = parseInt(cell.dataset.row, 10), startCol = parseInt(cell.dataset.col, 10);
+        if (result.shape.length === 0) {
+            const id = `R${startRow}C${startCol}`;
+            setCellDisplay(id, result.data, cell.id);
+        } else {
+            const id = `R${startRow}C${startCol}`;
+            setCellDisplay(id, null, cell.id);
+            let row = startRow, col = startCol + 1;
+            for (let i = 0; i < result.data.length; i++) {
+                let id = `R${row}C${col}`;
+                while (state.code[id]) {
+                    col++;
+                    id = `R${row}C${col}`;
+                }
+                setCellDisplay(id, `${result.data[i]}`, cell.id);
+                col++;
             }
-            console.log(`refreshing ${cell} with focus=${focus}`);
         }
-        renderState.dirty.clear();
-        refreshTimeout = null;
     }
 
     function commitCell(cell) {
         if (!cell) {
             return;
         }
-        state.code[cell.id] = cell.value;
-        console.log(`updated ${cell.id}'s code state to ${cell.value}`);
-        let result;
-        let error = '';
-        try {
-            result = runJFragment(cell.value, symbol => {
-                return state.results[symbol] || parseInt(state.display[symbol], 10) || null;
-            });
-            state.results[cell.id] = result;
-            console.log(result);
-        } catch (e) {
-            error = e.message;
-            console.log('Error running J fragment:', e.message)
+
+        setCellCode(cell.id, cell.value);
+        const result = state.results[cell.id];
+
+        if (result === undefined) {
+            // We implicitly consider that invalid code is a display value.
+            setCellCode(cell.id, '');
+            setCellDisplay(cell.id, cell.value, null);
+        } else {
+            unrollCodeCell(cell.id);
         }
-        const startRow = parseInt(cell.dataset.row, 10), startCol = parseInt(cell.dataset.col, 10);
-        if (result !== undefined && result.shape.length === 0) {
-            const id = `R${startRow}C${startCol}`;
-            state.display[id] = result.data;
-            requestRefresh(id);
-            console.log(`updated ${id}'s display state to ${state.display[id]}`);
-        }
-        let row = startRow, col = startCol + 1;
-        for (let i = 0; result !== undefined && i < result.data.length; i++) {
-            let id = `R${row}C${col}`;
-            while (state.code[id]) {
-                col++;
-                id = `R${row}C${col}`;
-            }
-            state.display[id] = `${result.data[i]}`;
-            requestRefresh(id);
-            col++;
-            console.log(`updated ${id}'s display state to ${state.display[id]}`);
-        }
+
+        refreshEffects();
         localStorage.setItem('state', JSON.stringify(state));
     }
 
-    document.body.addEventListener('click', e => {
-        if (e.target.classList.contains('cell')) {
-            requestFocus(e.target.id);
-        }
-    });
-
-    document.body.addEventListener('keydown', e => {
-        if (e.key === 'Enter') {
-            commitCell(document.querySelector('.cell:focus'));
-            requestBlur(document.querySelector('.cell:focus').id);
-            e.preventDefault();
-        } else if (e.key === 'Escape') {
-            requestBlur(document.querySelector('.cell:focus').id);
-            e.preventDefault();
-        } else if (e.key === 'Tab') {
-            const cell = document.querySelector('.cell:focus');
-            if (e.shiftKey) {
-                requestBlur(cell.id);
-                const row = parseInt(cell.dataset.row, 10);
-                const col = parseInt(cell.dataset.col, 10) - 1;
-                if (col >= 0) {
-                    requestFocus(`R${row}C${col}`);
-                }
-            } else {
-                commitCell(cell);
-                const row = parseInt(cell.dataset.row, 10);
-                const col = parseInt(cell.dataset.col, 10) + 1;
-                requestBlur(cell.id);
-                requestFocus(`R${row}C${col}`);
-            }
-            e.preventDefault();
-        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const cell = document.querySelector('.cell:focus');
-            const row = parseInt(cell.dataset.row, 10);
-            const col = parseInt(cell.dataset.col, 10);
-            commitCell(cell);
-            if (e.key === 'ArrowUp') {
-                requestBlur(cell.id);
-                requestFocus(`R${row - 1}C${col}`);
-            } else if (e.key === 'ArrowDown') {
-                requestBlur(cell.id);
-                requestFocus(`R${row + 1}C${col}`);
-            } else if (e.key === 'ArrowLeft') {
-                requestBlur(cell.id);
-                requestFocus(`R${row}C${col - 1}`);
-            } else if (e.key === 'ArrowRight') {
-                requestBlur(cell.id);
-                requestFocus(`R${row}C${col + 1}`);
-            }
-            e.preventDefault();
-        } else if (e.key === 'Backspace' && e.shiftKey) {
-            const cell = document.querySelector('.cell:focus');
-            const row = parseInt(cell.dataset.row, 10);
-            const col = parseInt(cell.dataset.col, 10);
-            state.code[cell.id] = state.display[cell.id] = '';
-            localStorage.setItem('state', JSON.stringify(state));
-            if (col > 0) {
-                requestBlur(cell.id);
-                requestFocus(`R${row}C${col - 1}`);
-            }
-        }
-    }, { capture: true });
-
-    document.body.addEventListener('blur', e => {
-        if (e.target.classList.contains('cell')) {
-            commitCell(e.target);
-            requestBlur(e.target.id);
-        }
-    });
+    function deleteCell(cell) {
+        setCellCode(cell.id, '');
+        setCellDisplay(cell.id, '', null);
+        refreshEffects(cell.id);
+        localStorage.setItem('state', JSON.stringify(state));
+    }
 
     document.querySelector('#grid').replaceWith(renderGrid(state));
+    bindGridListeners(document.body, commitCell, deleteCell);
 </script>
 </body>
 </html>
