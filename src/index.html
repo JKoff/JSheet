@@ -12,8 +12,20 @@
 <script src="grid.js"></script>
 <script>
     let state = JSON.parse(localStorage.getItem('state')) || { display: {}, code: {}, results: {}, inputs: {}, parent: {} };
+    for (const key in state.results) {
+        state.results[key] = new JArray(state.results[key].shape, state.results[key].data);
+    }
     if (!state.inputs) state.inputs = {};
     if (!state.parent) state.parent = {};
+
+    const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
+    function parseId(id) {
+        let res;
+        if ((res = parseIdRE.exec(id)) !== null) {
+            return { row: parseInt(res.groups.row, 10), col: parseInt(res.groups.col, 10) };
+        }
+        return null;
+    }
 
     const computeState = { dirty: new Set() };
 
@@ -45,17 +57,43 @@
     function setCellCode(id, code) {
         state.inputs[id] = [];
         state.code[id] = code;
+        delete state.results[id];
 
         try {
             state.results[id] = runJFragment(code, symbol => {
-                const val = state.results[symbol] || parseInt(state.display[symbol], 10) || null;
-                if (val !== null && !state.inputs[id].includes(symbol)) {
-                    state.inputs[id].push(symbol);
+                let split;
+                if ((split = symbol.split(':')).length === 2) {
+                    const start = parseId(split[0]), end = parseId(split[1]);
+                    if (start === null || end === null) {
+                        throw new Error('Not a valid symbol: ', symbol);
+                    }
+                    let data = [];
+                    for (let i = start.row; i <= end.row; i++) {
+                        for (let j = start.col; j <= end.col; j++) {
+                            const iid = `R${i}C${j}`;
+                            if (!state.results[iid]) continue;
+
+                            const val = state.results[iid].only();
+                            if (!state.inputs[id].includes(iid)) {
+                                state.inputs[id].push(iid);
+                            }
+                            data.push(val);
+                        }
+                    }
+                    return new JArray([end.row - start.row + 1, end.col - start.col + 1], data);
+                } else if (split.length === 1) {
+                    const val = state.results[symbol] || parseInt(state.display[symbol], 10) || null;
+                    if (val !== null && !state.inputs[id].includes(symbol)) {
+                        state.inputs[id].push(symbol);
+                    }
+                    return val;
+                } else {
+                    return null;
                 }
-                return val;
             });
         } catch (e) {
             console.log('Error running J fragment:', e.message)
+            state.results[id] = new JArray([], [code]);
         }
 
         requestRefresh(id);
@@ -79,7 +117,7 @@
         const startRow = parseInt(cell.dataset.row, 10), startCol = parseInt(cell.dataset.col, 10);
         if (result.shape.length === 0) {
             const id = `R${startRow}C${startCol}`;
-            setCellDisplay(id, result.data, cell.id);
+            setCellDisplay(id, result.data[0], cell.id);
         } else {
             const id = `R${startRow}C${startCol}`;
             setCellDisplay(id, null, cell.id);
