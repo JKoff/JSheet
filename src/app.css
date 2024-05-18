@@ -14,16 +14,22 @@ body {
     position: relative;
     resize: none;
 }
-.cell[data-populated=true][data-computed=false]::after {
+.cell:not([data-type=empty])::after {
     content: " ";
-    background-color: oklch(70% 0.1 206);
-    /* position: absolute; top: 4px; right: 4px; */
     position: absolute; bottom: 0; left: 0; right: 0;
-    /* width: 0.5em; height: 0.5em; */
     height: 0.1em;
-    /* border-radius: 0.5em; */
 }
+/* .cell[data-type="constant"]::after { background-color: oklch(70% 0.3 0); } */
+/* .cell[data-type="atom"]::after { background-color: oklch(70% 0.3 72); } */
+.cell[data-type="atom"] { opacity: 0.7; }
+.cell[data-type="list"] { opacity: 0.7; }
+.cell[data-type="table"] { opacity: 0.7; }
+/* .cell[data-type="list"]::after { background-color: oklch(70% 0.3 144); }
+.cell[data-type="table"]::after { background-color: oklch(70% 0.3 216); } */
+.cell[data-type="parented"] { background-color: oklch(98% 0 0); }
+
 textarea.cell { padding: 0.2em; }
 div.cell { display: grid; grid: 100% / 1fr auto; }
 div.cell .code, div.cell .display { padding: 0.2em; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
+div.cell .code { opacity: 0.8; }
 div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); }

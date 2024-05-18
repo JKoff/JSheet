@@ -22,8 +22,18 @@ function renderCell(state, row, col, focus) {
         }
     }
 
-    cell.dataset.populated = !!(state.code[cell.id] || state.display[cell.id]);
-    cell.dataset.computed = !!(!state.code[cell.id] && state.display[cell.id] && state.parent[cell.id]);
+    // Cases:
+    // 1. Cell is empty
+    if (state.code[cell.id] === undefined) cell.dataset.type = 'empty';
+    // 2. Cell contains constant
+    if (state.results[cell.id] && `${state.results[cell.id].data[0]}` === state.code[cell.id]) cell.dataset.type = 'constant';
+    // 3. Cell evaluates to atom
+    if (state.results[cell.id] && `${state.results[cell.id].data[0]}` !== state.code[cell.id]) cell.dataset.type = 'atom';
+    // 4. Cell evaluates to list or table
+    if (state.results[cell.id] && state.results[cell.id].shape.length === 1) cell.dataset.type = 'list';
+    if (state.results[cell.id] && state.results[cell.id].shape.length > 1) cell.dataset.type = 'table';
+    // 5. Cell was parented by another cell
+    if (state.parent[cell.id]) cell.dataset.type = 'parented';
     return cell;
 }
 

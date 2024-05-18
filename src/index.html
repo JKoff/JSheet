@@ -15,8 +15,6 @@
     for (const key in state.results) {
         state.results[key] = new JArray(state.results[key].shape, state.results[key].data);
     }
-    if (!state.inputs) state.inputs = {};
-    if (!state.parent) state.parent = {};
 
     const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
     function parseId(id) {
@@ -43,7 +41,7 @@
             seen.add(id);
 
             if (state.code[id]) {
-                setCellCode(id, state.code[id], state.parent[id]);
+                setCellCode(id, state.code[id]);
                 unrollCodeCell(id);
             } else {
                 setCellDisplay(id, state.display[id], state.parent[id]);
@@ -118,22 +116,26 @@
         if (result.shape.length === 0) {
             const id = `R${startRow}C${startCol}`;
             if (`${result.data[0]}` !== state.code[cell.id]) {
-                setCellDisplay(id, result.data[0], cell.id);
+                setCellDisplay(id, result.data[0], null);
             } else {
-                setCellDisplay(id, null, cell.id);
+                setCellDisplay(id, null, null);
             }
         } else {
             const id = `R${startRow}C${startCol}`;
-            setCellDisplay(id, null, cell.id);
+            setCellDisplay(id, null, null);
             let row = startRow, col = startCol + 1;
-            for (let i = 0; i < result.data.length; i++) {
-                let id = `R${row}C${col}`;
-                while (state.code[id]) {
+            for (let i = 0; i < (result.shape[0] || 1); i++) {
+                for (let j = 0; j < (result.shape[1] || 1); j++) {
+                    let iid = `R${row}C${col}`;
+                    while (state.code[iid] && state.parent[iid] !== id) {
+                        col++;
+                        iid = `R${row}C${col}`;
+                    }
+                    setCellDisplay(iid, `${result.data[i * result.shape[0] + j]}`, cell.id);
                     col++;
-                    id = `R${row}C${col}`;
                 }
-                setCellDisplay(id, `${result.data[i]}`, cell.id);
-                col++;
+                row++;
+                col = startCol + 1;
             }
         }
     }
@@ -142,16 +144,15 @@
         if (!cell) {
             return;
         }
+        if (cell.value === '') {
+            deleteCell(cell);
+            return;
+        }
 
         setCellCode(cell.id, cell.value);
         const result = state.results[cell.id];
 
-        if (result === undefined) {
-            // We implicitly consider that invalid code is a display value.
-            setCellCode(cell.id, '');
-        } else {
-            unrollCodeCell(cell.id);
-        }
+        unrollCodeCell(cell.id);
 
         refreshEffects();
         localStorage.setItem('state', JSON.stringify(state));
