@@ -117,7 +117,11 @@
         const startRow = parseInt(cell.dataset.row, 10), startCol = parseInt(cell.dataset.col, 10);
         if (result.shape.length === 0) {
             const id = `R${startRow}C${startCol}`;
-            setCellDisplay(id, result.data[0], cell.id);
+            if (`${result.data[0]}` !== state.code[cell.id]) {
+                setCellDisplay(id, result.data[0], cell.id);
+            } else {
+                setCellDisplay(id, null, cell.id);
+            }
         } else {
             const id = `R${startRow}C${startCol}`;
             setCellDisplay(id, null, cell.id);
@@ -145,7 +149,6 @@
         if (result === undefined) {
             // We implicitly consider that invalid code is a display value.
             setCellCode(cell.id, '');
-            setCellDisplay(cell.id, cell.value, null);
         } else {
             unrollCodeCell(cell.id);
         }
@@ -155,9 +158,14 @@
     }
 
     function deleteCell(cell) {
-        setCellCode(cell.id, '');
-        setCellDisplay(cell.id, '', null);
-        refreshEffects(cell.id);
+        const id = cell.id;
+        delete state.code[id];
+        delete state.results[id];
+        delete state.inputs[id];
+        delete state.parent[id];
+        delete state.display[id];
+        requestRefresh(id);
+        computeState.dirty.add(id);
         localStorage.setItem('state', JSON.stringify(state));
     }
 
