@@ -11,9 +11,14 @@
 <script src="eval.js"></script>
 <script src="grid.js"></script>
 <script>
-    let state = JSON.parse(localStorage.getItem('state')) || { display: {}, code: {}, results: {}, inputs: {}, parent: {} };
-    for (const key in state.results) {
-        state.results[key] = new JArray(state.results[key].shape, state.results[key].data);
+    let state = JSON.parse(localStorage.getItem('jsheet')) || { cells: {} };
+    if (state.cells === undefined) state.cells = {};
+    for (const key of Object.keys(state.cells)) {
+        const { code, display, result, inputs, parent } = state.cells[key];
+        state.cells[key] = {
+            code, display, inputs, parent,
+            result: result ? new JArray(result.shape, result.data) : undefined
+        };
     }
 
     const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
@@ -28,8 +33,7 @@
     const computeState = { dirty: new Set() };
 
     function downstreamCells(id) {
-        return Object.keys(state.inputs).filter(k => state.inputs[k].includes(id));
-
+        return Object.keys(state.cells).filter(k => (state.cells[k].inputs || []).includes(id));
     }
 
     function refreshEffects() {
@@ -40,11 +44,12 @@
             if (seen.has(id)) continue;
             seen.add(id);
 
-            if (state.code[id]) {
-                setCellCode(id, state.code[id]);
+            const st = state.cells[id];
+            if (st.code) {
+                setCellCode(id, st.code);
                 unrollCodeCell(id);
             } else {
-                setCellDisplay(id, state.display[id], state.parent[id]);
+                setCellDisplay(id, st.display, st.result, st.parent);
             }
 
             stack.push(...downstreamCells(id));
@@ -53,12 +58,10 @@
     }
 
     function setCellCode(id, code) {
-        state.inputs[id] = [];
-        state.code[id] = code;
-        delete state.results[id];
+        const st = state.cells[id] = { code, inputs: [] };
 
         try {
-            state.results[id] = runJFragment(code, symbol => {
+            st.result = runJFragment(code, symbol => {
                 let split;
                 if ((split = symbol.split(':')).length === 2) {
                     const start = parseId(split[0]), end = parseId(split[1]);
@@ -69,20 +72,21 @@
                     for (let i = start.row; i <= end.row; i++) {
                         for (let j = start.col; j <= end.col; j++) {
                             const iid = `R${i}C${j}`;
-                            if (!state.results[iid]) continue;
+                            const ist = state.cells[iid];
+                            if (!ist || !ist.result) continue;
 
-                            const val = state.results[iid].only();
-                            if (!state.inputs[id].includes(iid)) {
-                                state.inputs[id].push(iid);
+                            if (!st.inputs.includes(iid)) {
+                                st.inputs.push(iid);
                             }
-                            data.push(val);
+                            data.push(ist.result.only());
                         }
                     }
                     return new JArray([end.row - start.row + 1, end.col - start.col + 1], data);
                 } else if (split.length === 1) {
-                    const val = state.results[symbol] || parseInt(state.display[symbol], 10) || null;
-                    if (val !== null && !state.inputs[id].includes(symbol)) {
-                        state.inputs[id].push(symbol);
+                    const ist = state.cells[symbol];
+                    const val = ist.result || parseInt(ist.display, 10) || null;
+                    if (val !== null && !st.inputs.includes(symbol)) {
+                        st.inputs.push(symbol);
                     }
                     return val;
                 } else {
@@ -91,34 +95,33 @@
             });
         } catch (e) {
             console.log('Error running J fragment:', e.message)
-            state.results[id] = new JArray([], [code]);
+            st.result = new JArray([], [code]);
         }
 
         requestRefresh(id);
         computeState.dirty.add(id);
     }
 
-    function setCellDisplay(id, display, parentId) {
-        state.parent[id] = parentId;
-        state.display[id] = display;
+    function setCellDisplay(id, display, result, parentId) {
+        state.cells[id] = { display, result, parent: parentId };
 
         requestRefresh(id);
         computeState.dirty.add(id);
     }
 
     function unrollCodeCell(id) {
-        const result = state.results[id];
+        const { result, code } = state.cells[id];
         if (result === undefined) {
             return;
         }
-        if (result.shape.length === 0 && `${result.data[0]}` === state.code[id]) {
+        if (result.shape.length === 0 && `${result.data[0]}` === code) {
             return;
         }
         let { row, col } = parseId(id);
         for (let i = 0; i < result.data.length; i++) {
             const dimSizes = result.shape.reduce((acc, val) => acc.concat(val * acc[acc.length - 1] || 1), []);
             const coords = result.shape.reduce(([coords, idx], dimSize) => [coords.concat(idx % dimSize), Math.floor(idx / dimSize)], [[], i])[0];
-            setCellDisplay(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, `${result.data[i]}`, id);
+            setCellDisplay(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, `${result.data[i]}`, new JArray([], [result.data[i]]), id);
         }
     }
 
@@ -132,24 +135,18 @@
         }
 
         setCellCode(cell.id, cell.value);
-        const result = state.results[cell.id];
-
         unrollCodeCell(cell.id);
 
         refreshEffects();
-        localStorage.setItem('state', JSON.stringify(state));
+        localStorage.setItem('jsheet', JSON.stringify(state));
     }
 
     function deleteCell(cell) {
         const id = cell.id;
-        delete state.code[id];
-        delete state.results[id];
-        delete state.inputs[id];
-        delete state.parent[id];
-        delete state.display[id];
+        delete state.cells[id];
         requestRefresh(id);
         computeState.dirty.add(id);
-        localStorage.setItem('state', JSON.stringify(state));
+        localStorage.setItem('jsheet', JSON.stringify(state));
     }
 
     document.querySelector('#grid').replaceWith(renderGrid(state));

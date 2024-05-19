@@ -7,33 +7,38 @@ function renderCell(state, row, col, focus) {
     cell.className = `cell`;
     cell.dataset.row = row;
     cell.dataset.col = col;
+
+    const st = state.cells[cell.id];
+    if (st === undefined) {
+        cell.innerHTML = '';
+        return cell;
+    }
+
     if (focus) {
-        cell.value = state.code[cell.id] || state.display[cell.id] || '';
+        cell.value = st.code || st.display || '';
     } else {
-        if (state.code[cell.id]) {
+        if (st.code) {
             cell.innerHTML = `
-                <span class="code">${state.code[cell.id]}</span>
-                ${state.display[cell.id] ? `<span class="display">${state.display[cell.id]}</span>` : ''}
+                <span class="code">${st.code}</span>
+                ${st.display ? `<span class="display">${st.display}</span>` : ''}
             `;
-        } else if (state.display[cell.id]) {
-            cell.innerHTML = `<span class="display">${state.display[cell.id]}</span>`;
-        } else {
-            cell.innerHTML = '';
+        } else if (st.display) {
+            cell.innerHTML = `<span class="display">${st.display}</span>`;
         }
     }
 
     // Cases:
     // 1. Cell is empty
-    if (state.code[cell.id] === undefined) cell.dataset.type = 'empty';
+    if (st.code === undefined) cell.dataset.type = 'empty';
     // 2. Cell contains constant
-    if (state.results[cell.id] && `${state.results[cell.id].data[0]}` === state.code[cell.id]) cell.dataset.type = 'constant';
+    if (st.result && `${st.result.data[0]}` === st.code) cell.dataset.type = 'constant';
     // 3. Cell evaluates to atom
-    if (state.results[cell.id] && `${state.results[cell.id].data[0]}` !== state.code[cell.id]) cell.dataset.type = 'atom';
+    if (st.result && `${st.result.data[0]}` !== st.code) cell.dataset.type = 'atom';
     // 4. Cell evaluates to list or table
-    if (state.results[cell.id] && state.results[cell.id].shape.length === 1) cell.dataset.type = 'list';
-    if (state.results[cell.id] && state.results[cell.id].shape.length > 1) cell.dataset.type = 'table';
+    if (st.result && st.result.shape.length === 1) cell.dataset.type = 'list';
+    if (st.result && st.result.shape.length > 1) cell.dataset.type = 'table';
     // 5. Cell was parented by another cell
-    if (state.parent[cell.id]) cell.dataset.type = 'parented';
+    if (st.parent) cell.dataset.type = 'parented';
     return cell;
 }
 

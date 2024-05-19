@@ -64,7 +64,7 @@ class Monad {
         this.rank = rank;
     }
     apply(arg) {
-        console.log('Evaluating Monad', this.name, 'with rank', this.rank, 'on', arg, 'result is', arg.map(this.rank, frame => this.fn(frame)));
+        // console.log('Evaluating Monad', this.name, 'with rank', this.rank, 'on', arg, 'result is', arg.map(this.rank, frame => this.fn(frame)));
         return arg.map(this.rank, frame => this.fn(frame));
     }
 }
@@ -113,7 +113,7 @@ class Dyad {
                 right.shape.slice(0, right.shape.length - this.rightRank).concat(...results[0].shape),
             Array.prototype.concat(...results.map(frame => frame.data))
         );
-        console.log('Evaluating Dyad', this.name, 'with left rank', this.leftRank, 'on', left, 'and right rank', this.rightRank, 'on', right, 'result is', result);
+        // console.log('Evaluating Dyad', this.name, 'with left rank', this.leftRank, 'on', left, 'and right rank', this.rightRank, 'on', right, 'result is', result);
 
         return result;
     }
@@ -217,8 +217,10 @@ function evaluateToken(token, lookupFn) {
 }
 
 function runJFragment(code, lookupFn) {
+    let debugInfo = [];
+
     const tokens = tokenize(code);
-    console.log("Tokens", tokens);
+    debugInfo.push("Tokens", JSON.stringify(tokens));
 
     // Parsing and execution proceed simultaneously, one token at a time.
     // https://code.jsoftware.com/wiki/Vocabulary/Parsing
@@ -226,14 +228,15 @@ function runJFragment(code, lookupFn) {
     while (tokens.length > 0) {
         const tail = tokens.pop();
         const tail2 = evaluateToken(tail, lookupFn);
-        console.log('Tail', tail, 'Tail2', tail2);
         stack.splice(0, 0, tail2);
         while (reduce(stack)) {
-            console.log('Stack', stack);
+            debugInfo.push('Stack', JSON.stringify(stack));
         }
     }
 
-    console.log('Finished with stack', stack);
+    debugInfo.push('Finished stack', JSON.stringify(stack));
+    console.log(debugInfo);
+
     return stack[1];
 };
 
