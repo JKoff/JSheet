@@ -37,6 +37,9 @@ describe('runJFragment', function () {
     expect(calledKey).toBe('Result');
     expect(calledValue).toMatchObject({ data: [5] });
   });
+  it('can construct a sequence by appending', function () {
+    expect(fn('1 , 2 , 3')).toMatchObject({ shape: [3], data: [1, 2, 3] });
+  });
   // it('can sum two lists of integers', function () {
   //   expect(runJFragment('0 1 2 + 00 10 20', () => null)).toMatchObject({ shape: [3], data: [0, 11, 22] });
   // });

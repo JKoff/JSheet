@@ -101,9 +101,9 @@ class Dyad {
             const leftFrame = leftNext.value;
             const rightFrame = rightNext.value;
             
-            if (leftFrame.shape.length !== rightFrame.shape.length) {
-                throw new Error(`Frame shapes do not match in ${this.name}: ${JSON.stringify(leftFrame.shape)} vs ${JSON.stringify(rightFrame.shape)}`);
-            }
+            // if (leftFrame.shape.length !== rightFrame.shape.length) {
+            //     throw new Error(`Frame shapes do not match in ${this.name}: ${JSON.stringify(leftFrame.shape)} vs ${JSON.stringify(rightFrame.shape)}`);
+            // }
 
             results.push(this.fn(leftFrame, rightFrame));
         } while (true);
@@ -151,6 +151,11 @@ new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).
 new VerbBuilder('>:').withMonad(x => atom(x.only() + 1, x.unit), 0).register();
 new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only(), x.unit), 0, 0).register();
 new VerbBuilder('*').withDyad((x, y) => atom(x.only() * y.only(), sumUnits(x.unit, y.unit)), 0, 0).register();
+new VerbBuilder(',').withDyad((x, y) => {
+    const newShape = new Array(Math.max(x.shape.length, y.shape.length, 1));
+    for (let i = 0; i < newShape.length; i++) { newShape[i] = (x.shape[i] || 1) + (y.shape[i] || 1); }
+    return new JArray(newShape, [...x.data, ...y.data], x.unit);
+}, Infinity, Infinity).register();
 
 function tokenize(code) {
     const tokens = [BEGIN];
