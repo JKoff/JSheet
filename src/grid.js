@@ -56,6 +56,8 @@ function* allSelected() {
 
 function cellType(st) {
     // Cases:
+    // 6. Cell does not exist
+    if (st === undefined) return 'no cell';
     // 5. Cell was parented by another cell
     if (st.parent) return 'parented';
     // 1. Cell is empty
@@ -87,6 +89,15 @@ function displayCell(st) {
         return st.code;
     }
     return '';
+}
+
+function displayUnit(unit) {
+    if (Object.entries(unit).length === 0) {
+        return NULL_TYPE;
+    }
+    return Object.entries(unit).map(([unit, coeff]) => {
+        return `<span>${unit}${coeff !== 1 ? `<sup>${coeff}</sup>` : ''}</span>`;
+    }).join(' • ');
 }
 
 function renderCell(state, row, col, focus, selected) {
@@ -207,11 +218,11 @@ function refresh() {
         infos.className = 'infos';
 
         const st = state.cells[id];
-        const selected = renderState.selection.startRow ?
+        const selected = renderState.selection.startRow !== renderState.selection.endRow ?
             `R${Math.min(renderState.selection.startRow, renderState.selection.endRow)}C${Math.min(renderState.selection.startCol, renderState.selection.endCol)}:R${Math.max(renderState.selection.startRow, renderState.selection.endRow)}C${Math.max(renderState.selection.startCol, renderState.selection.endCol)}` :
             id;
-        const effectiveUnit = (st.result || {}).unit || NULL_TYPE;
-        for (const info of [selected, Object.keys(effectiveUnit).join('•'), cellType(state.cells[id])]) {
+        const effectiveUnit = ((st || {}).result || {}).unit || {};
+        for (const info of [selected, displayUnit(effectiveUnit), cellType(state.cells[id])]) {
             const infoEl = document.createElement('span');
             infoEl.className = 'info';
             infoEl.innerHTML = info;
@@ -245,7 +256,7 @@ function refresh() {
 
         for (const dim of [NULL_TYPE, '%']) {
             const dimEl = document.createElement('span');
-            dimEl.className = `format ${(st.format || {})[dim] ? 'active' : ''}`;
+            dimEl.className = `format ${((st || {}).format || {})[dim] ? 'active' : ''}`;
             dimEl.innerHTML = dim;
             dimEl.addEventListener('click', () => {
                 if (dim === NULL_TYPE) {
@@ -404,6 +415,9 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
                 if (el.id === renderState.lastClick.id) {
                     requestFocus(el.id);
                 } else {
+                    if (renderState.contextual) {
+                        renderState.contextual = { x: e.x, y: e.y, row: el.dataset.row, col: el.dataset.col };
+                    }
                     requestSelect(el.id);
                     renderState.lastClick.timeMs = +new Date();
                     renderState.lastClick.id = el.id;

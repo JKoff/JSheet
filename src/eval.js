@@ -140,9 +140,17 @@ class VerbBuilder {
     }
 }
 
+function sumUnits(lhs, rhs) {
+    const res = {};
+    Object.entries(lhs || {}).forEach(([k, v]) => res[k] = (res[k] || 0) + v);
+    Object.entries(rhs || {}).forEach(([k, v]) => res[k] = (res[k] || 0) + v);
+    return res;
+}
+
 new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).fill(0).map((_, idx) => idx), x.unit), 1).register();
 new VerbBuilder('>:').withMonad(x => atom(x.only() + 1, x.unit), 0).register();
 new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only(), x.unit), 0, 0).register();
+new VerbBuilder('*').withDyad((x, y) => atom(x.only() * y.only(), sumUnits(x.unit, y.unit)), 0, 0).register();
 
 function tokenize(code) {
     const tokens = [BEGIN];

@@ -96,7 +96,7 @@
                 st.result.unit = st.unit;
             }
         } catch (e) {
-            console.log('Error running J fragment:', e.message)
+            console.log('Error running J fragment:', e)
             st.result = new JArray([], [code], st.unit);
         }
 
