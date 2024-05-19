@@ -30,9 +30,28 @@ body {
 .cell[data-type="table"]::after { background-color: oklch(70% 0.3 216); } */
 
 textarea.cell { padding: 0.2em; }
-div.cell { display: grid; grid: 100% / 1fr auto; }
+div.cell { padding: 0.2em; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
+
+/* div.cell { display: grid; grid: 100% / 1fr auto; }
 div.cell .code, div.cell .display { padding: 0.2em; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
 div.cell .code { opacity: 0.8; }
-div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); }
+div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); } */
 
 .cell.selected { background-color: oklch(70% 0.1 206 / 0.1); }
+
+#contextual {
+    display: none;
+    border: 1px solid black;
+    position: absolute;
+
+    padding: 0.5rem;
+    grid-gap: 0.5rem;
+}
+
+#contextual .dimensions {
+    font-size: 0.8rem;
+    
+    display: grid;
+    grid: auto / repeat(3, 1fr);
+    grid-gap: 0.5rem;
+}

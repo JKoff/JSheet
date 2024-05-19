@@ -8,6 +8,7 @@ let renderState = {
         endRow: null,
         endCol: null,
     },
+    contextual: null,
 };
 let refreshTimeout = null;
 
@@ -53,14 +54,7 @@ function renderCell(state, row, col, focus, selected) {
     if (focus) {
         cell.value = st.code || st.display || '';
     } else {
-        if (st.code) {
-            cell.innerHTML = `
-                <span class="code">${st.code}</span>
-                ${st.display ? `<span class="display">${st.display}</span>` : ''}
-            `;
-        } else if (st.display) {
-            cell.innerHTML = `<span class="display">${st.display}</span>`;
-        }
+        cell.innerHTML = st.display || st.code || '';
     }
 
     // Cases:
@@ -96,6 +90,10 @@ function requestFocus(cell) {
     if (renderState.focus !== null) {
         requestBlur(renderState.focus);
     }
+    if (renderState.contextual !== null) {
+        renderState.contextual = null;
+        requestRefresh(null);
+    }
     renderState.focus = cell;
     requestRefresh(cell);
 }
@@ -127,7 +125,9 @@ function requestClearSelect() {
 }
 
 function requestRefresh(cell) {
-    renderState.dirty.add(cell);
+    if (cell !== null) {
+        renderState.dirty.add(cell);
+    }
     if (refreshTimeout === null) {
         refreshTimeout = setTimeout(refresh, 0);
     }
@@ -148,6 +148,46 @@ function refresh() {
         }
     }
     renderState.dirty.clear();
+
+    if (renderState.contextual === null) {
+        document.getElementById('contextual').style.display = 'none';
+    } else {
+        const { x, y, row, col } = renderState.contextual;
+
+        const root = document.createElement('div');
+        root.id = 'contextual';
+        root.style.display = 'grid';
+        root.style.top = `${y}px`;
+        root.style.left = `${x}px`;
+
+        const infos = document.createElement('div');
+        infos.className = 'infos';
+
+        for (const info of [`R${row}C${col}`]) {
+            const infoEl = document.createElement('span');
+            infoEl.className = 'info';
+            infoEl.innerHTML = info;
+            infos.appendChild(infoEl);
+        }
+
+        root.appendChild(infos);
+
+
+        const dimensions = document.createElement('div');
+        dimensions.className = 'dimensions';
+
+        for (const dim of ['&#8709;', '%', 'USD', 'CAD', 'EUR']) {
+            const dimEl = document.createElement('span');
+            dimEl.className = 'dimension';
+            dimEl.innerHTML = dim;
+            dimensions.appendChild(dimEl);
+        }
+
+        root.appendChild(dimensions);
+
+        document.getElementById('contextual').replaceWith(root);
+    }
+
     refreshTimeout = null;
 }
 
@@ -155,6 +195,9 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
     rootEl.addEventListener('keydown', e => {
         if (e.key === 'Escape') {
             requestClearSelect();
+
+            renderState.contextual = null;
+            requestRefresh(null);
         }
 
         const focusEl = document.querySelector('.cell:focus');
@@ -216,18 +259,20 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
     });
 
     rootEl.addEventListener('mousedown', e => {
-        renderState.selection.mousedown = true;
+        if (e.metaKey === false) {
+            renderState.selection.mousedown = true;
 
-        requestClearSelect();
+            requestClearSelect();
 
-        const focusEl = document.querySelector('.cell:focus');
-        if (focusEl && focusEl.classList.contains('cell')) {
-            requestBlur(focusEl.id);
-        }
+            const focusEl = document.querySelector('.cell:focus');
+            if (focusEl && focusEl.classList.contains('cell')) {
+                requestBlur(focusEl.id);
+            }
 
-        if (e.target.classList.contains('cell')) {
-            requestSelect(e.target.id);
-            e.preventDefault();
+            if (e.target.classList.contains('cell')) {
+                requestSelect(e.target.id);
+                e.preventDefault();
+            }
         }
     });
     rootEl.addEventListener('mouseover', e => {
@@ -237,16 +282,26 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
         }
     });
     rootEl.addEventListener('mouseup', e => {
-        renderState.selection.mousedown = false;
-
-        if (Array.from(allSelected()).length > 1) {
-            e.preventDefault();
-        } else if (e.target.classList.contains('cell')) {
-            requestClearSelect();
-            requestFocus(e.target.id);
+        let el = null;
+        if (e.target.classList.contains('cell')) {
+            el = e.target;
         } else if (e.target.parentNode.classList.contains('cell')) {
-            requestClearSelect();
-            requestFocus(e.target.parentNode.id);
+            el = e.target.parentNode;
+        }
+
+        if (e.metaKey === false) {
+            renderState.selection.mousedown = false;
+
+            if (Array.from(allSelected()).length > 1) {
+                e.preventDefault();
+            } else if (el !== null) {
+                requestClearSelect();
+                requestFocus(el.id);
+            }
+        } else if (e.metaKey === true && el !== null) {
+            renderState.contextual = { x: e.x, y: e.y, row: el.dataset.row, col: el.dataset.col };
+            requestRefresh(null);
+            e.preventDefault();
         }
     });
 }
