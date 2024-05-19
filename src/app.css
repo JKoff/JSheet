@@ -34,3 +34,5 @@ div.cell { display: grid; grid: 100% / 1fr auto; }
 div.cell .code, div.cell .display { padding: 0.2em; overflow: hidden; text-overflow: ellipsis; text-wrap: nowrap; }
 div.cell .code { opacity: 0.8; }
 div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); }
+
+.cell.selected { background-color: oklch(70% 0.1 206 / 0.1); }

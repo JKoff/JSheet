@@ -1,10 +1,46 @@
-let renderState = { focus: null, dirty: new Set() };
+let renderState = {
+    focus: null,
+    dirty: new Set(),
+    selection: {
+        mousedown: false,
+        startRow: null,
+        startCol: null,
+        endRow: null,
+        endCol: null,
+    },
+};
 let refreshTimeout = null;
 
-function renderCell(state, row, col, focus) {
+const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
+function parseId(id) {
+    let res;
+    if ((res = parseIdRE.exec(id)) !== null) {
+        return { row: parseInt(res.groups.row, 10), col: parseInt(res.groups.col, 10) };
+    }
+    return null;
+}
+
+function isSelected(row, col) {
+    const { startRow, startCol, endRow, endCol } = renderState.selection;
+    return startRow !== null && (
+        Math.min(startRow, endRow) <= row && row <= Math.max(startRow, endRow) &&
+        Math.min(startCol, endCol) <= col && col <= Math.max(startCol, endCol)
+    );
+}
+
+function* allSelected() {
+    const { startRow, startCol, endRow, endCol } = renderState.selection;
+    for (let i = Math.min(startRow, endRow); i <= Math.max(startRow, endRow); i++) {
+        for (let j = Math.min(startCol, endCol); j <= Math.max(startCol, endCol); j++) {
+            yield `R${i}C${j}`;
+        }
+    }
+}
+
+function renderCell(state, row, col, focus, selected) {
     const cell = document.createElement(focus ? 'textarea' : 'div');
     cell.id = `R${row}C${col}`;
-    cell.className = `cell`;
+    cell.className = `cell ${selected ? 'selected' : ''}`;
     cell.dataset.row = row;
     cell.dataset.col = col;
 
@@ -69,6 +105,27 @@ function requestBlur(cell) {
     requestRefresh(cell);
 }
 
+function requestSelect(cell) {
+    const { row, col } = parseId(cell);
+    if (renderState.selection.startRow === null) {
+        renderState.selection.startRow = renderState.selection.endRow = row;
+        renderState.selection.startCol = renderState.selection.endCol = col;
+        for (const id of allSelected()) requestRefresh(id);
+        return;
+    }
+    for (const id of allSelected()) requestRefresh(id);
+    renderState.selection.endRow = row;
+    renderState.selection.endCol = col;
+    for (const id of allSelected()) requestRefresh(id);
+
+}
+
+function requestClearSelect() {
+    for (const id of allSelected()) requestRefresh(id);
+    renderState.selection.startRow = renderState.selection.endRow = null;
+    renderState.selection.startCol = renderState.selection.endCol = null;
+}
+
 function requestRefresh(cell) {
     renderState.dirty.add(cell);
     if (refreshTimeout === null) {
@@ -78,11 +135,11 @@ function requestRefresh(cell) {
 
 function refresh() {
     for (let cell of renderState.dirty) {
-        const row = parseInt(cell.match(/R(\d+)/)[1], 10);
-        const col = parseInt(cell.match(/C(\d+)/)[1], 10);
+        const { row, col } = parseId(cell);
         const focus = cell === renderState.focus;
+        const selected = isSelected(row, col);
         const el = document.querySelector(`#${cell}`);
-        const newEl = renderCell(state, el.dataset.row, el.dataset.col, focus);
+        const newEl = renderCell(state, el.dataset.row, el.dataset.col, focus, selected);
         el.replaceWith(newEl);
         if (focus) {
             newEl.focus();
@@ -95,16 +152,11 @@ function refresh() {
 }
 
 function bindGridListeners(rootEl, commitCell, deleteCell) {
-    rootEl.addEventListener('click', e => {
-        if (e.target.classList.contains('cell')) {
-            requestFocus(e.target.id);
-        }
-        if (e.target.parentNode.classList.contains('cell')) {
-            requestFocus(e.target.parentNode.id);
-        }
-    });
-
     rootEl.addEventListener('keydown', e => {
+        if (e.key === 'Escape') {
+            requestClearSelect();
+        }
+
         const focusEl = document.querySelector('.cell:focus');
         if (!focusEl) {
             return;
@@ -160,6 +212,41 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
         if (e.target.classList.contains('cell')) {
             commitCell(e.target);
             requestBlur(e.target.id);
+        }
+    });
+
+    rootEl.addEventListener('mousedown', e => {
+        renderState.selection.mousedown = true;
+
+        requestClearSelect();
+
+        const focusEl = document.querySelector('.cell:focus');
+        if (focusEl && focusEl.classList.contains('cell')) {
+            requestBlur(focusEl.id);
+        }
+
+        if (e.target.classList.contains('cell')) {
+            requestSelect(e.target.id);
+            e.preventDefault();
+        }
+    });
+    rootEl.addEventListener('mouseover', e => {
+        if (renderState.selection.mousedown && e.target.classList.contains('cell')) {
+            requestSelect(e.target.id);
+            e.preventDefault();
+        }
+    });
+    rootEl.addEventListener('mouseup', e => {
+        renderState.selection.mousedown = false;
+
+        if (Array.from(allSelected()).length > 1) {
+            e.preventDefault();
+        } else if (e.target.classList.contains('cell')) {
+            requestClearSelect();
+            requestFocus(e.target.id);
+        } else if (e.target.parentNode.classList.contains('cell')) {
+            requestClearSelect();
+            requestFocus(e.target.parentNode.id);
         }
     });
 }

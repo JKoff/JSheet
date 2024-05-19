@@ -21,15 +21,6 @@
         };
     }
 
-    const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
-    function parseId(id) {
-        let res;
-        if ((res = parseIdRE.exec(id)) !== null) {
-            return { row: parseInt(res.groups.row, 10), col: parseInt(res.groups.col, 10) };
-        }
-        return null;
-    }
-
     const computeState = { dirty: new Set() };
 
     function downstreamCells(id) {
