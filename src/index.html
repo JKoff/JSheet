@@ -71,7 +71,11 @@
             const lookupFn = symbol => {
                 let split;
                 if (symbol in state.exports) {
-                    return state.exports[symbol].result;
+                    const xp = state.exports[symbol];
+                    if (xp.result && !st.inputs.includes(xp.parent)) {
+                        st.inputs.push(xp.parent);
+                    }
+                    return xp.result;
                 } else if (/R[\-0-9]+C[\-0-9]+:R[\-0-9]+C[\-0-9]+/.test(symbol) && (split = symbol.split(':')).length === 2) {
                     const start = parseId(split[0]), end = parseId(split[1]);
                     if (start === null || end === null) {
