@@ -3,9 +3,10 @@ const verbs = {}, monads = {}, dyads = {};
 
 // Implements the J array data structure, or something like it.
 class JArray {
-    constructor(shape, data) {
+    constructor(shape, data, unit=null) {
         this.shape = shape;
         this.data = data;
+        this.unit = unit;
         if (this.shape.reduce((acc, val) => acc * val, 1) !== this.data.length) {
             throw new Error(`Shape ${JSON.stringify(this.shape)} does not match data length ${this.data.length}`);
         }
@@ -23,7 +24,7 @@ class JArray {
 
         for (let j = 0; j < repetitions; j++) {
             for (let i = 0; i < numItems; i++) {
-                yield new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize));
+                yield new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize), this.unit);
             }
         }
     }
@@ -34,11 +35,11 @@ class JArray {
         const frameShape = this.shape.slice(0, this.shape.length - rank);
         const frameSize = frameShape.reduce((acc, val) => acc * val, 1);
 
-        const frames = new Array(frameSize).fill(0).map((_, i) => new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize)));
+        const frames = new Array(frameSize).fill(0).map((_, i) => new JArray(itemShape, this.data.slice(i * itemSize, (i + 1) * itemSize), this.unit));
         const processedFrames = frames.map(fn);
 
         const resultShape = this.shape.slice(0, this.shape.length - rank).concat(...processedFrames[0].shape);
-        const result = new JArray(resultShape, Array.prototype.concat(...processedFrames.map(frame => frame.data)));
+        const result = new JArray(resultShape, Array.prototype.concat(...processedFrames.map(frame => frame.data)), this.unit);
 
         return result;
     }
@@ -50,11 +51,11 @@ class JArray {
     }
 }
 
-function atom(value) {
+function atom(value, unit) {
     if (value instanceof JArray) {
         throw new Error(`Did not expect a JArray to be passed into atom: ${JSON.stringify(value)}`);
     }
-    return new JArray([], [value]);
+    return new JArray([], [value], unit);
 }
 
 class Monad {
@@ -111,7 +112,8 @@ class Dyad {
             leftFS > rightFS ?
                 left.shape.slice(0, left.shape.length - this.leftRank).concat(...results[0].shape) :
                 right.shape.slice(0, right.shape.length - this.rightRank).concat(...results[0].shape),
-            Array.prototype.concat(...results.map(frame => frame.data))
+            Array.prototype.concat(...results.map(frame => frame.data)),
+            results.length > 0 ? results[0].unit : null
         );
         // console.log('Evaluating Dyad', this.name, 'with left rank', this.leftRank, 'on', left, 'and right rank', this.rightRank, 'on', right, 'result is', result);
 
@@ -138,9 +140,9 @@ class VerbBuilder {
     }
 }
 
-new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).fill(0).map((_, idx) => idx)), 1).register();
-new VerbBuilder('>:').withMonad(x => atom(x.only() + 1), 0).register();
-new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only()), 0, 0).register();
+new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).fill(0).map((_, idx) => idx), x.unit), 1).register();
+new VerbBuilder('>:').withMonad(x => atom(x.only() + 1, x.unit), 0).register();
+new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only(), x.unit), 0, 0).register();
 
 function tokenize(code) {
     const tokens = [BEGIN];
@@ -235,7 +237,7 @@ function runJFragment(code, lookupFn) {
     }
 
     debugInfo.push('Finished stack', JSON.stringify(stack));
-    console.log(debugInfo);
+    console.log(debugInfo.join(' > '));
 
     return stack[1];
 };

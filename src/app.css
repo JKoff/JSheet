@@ -64,6 +64,15 @@ div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); } */
     display: grid;
     grid: auto / repeat(3, 1fr);
 }
-
 #contextual .dimensions .dimension { padding: 0.5em; text-align: center; }
 #contextual .dimensions .dimension.active { background-color: oklch(70% 0.1 206 / 0.1); }
+
+#contextual .formats {
+    font-size: 0.8rem;
+    padding: 0.5rem;
+
+    display: grid;
+    grid: auto / repeat(3, 1fr);
+}
+#contextual .formats .format { padding: 0.5em; text-align: center; }
+#contextual .formats .format.active { background-color: oklch(70% 0.1 206 / 0.1); }

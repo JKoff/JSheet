@@ -3,6 +3,10 @@ const NULL_TYPE = '&#8709;';
 let renderState = {
     focus: null,
     dirty: new Set(),
+    lastClick: {
+        timeMs: null,
+        id: null,
+    },
     selection: {
         mousedown: false,
         startRow: null,
@@ -12,11 +16,16 @@ let renderState = {
     },
     contextual: null,
     onCellUnitChange: () => {},
+    onCellFormatChange: () => {},
 };
 let refreshTimeout = null;
 
 function bindCellUnitChange(fn) {
     renderState.onCellUnitChange = fn;
+}
+
+function bindCellFormatChange(fn) {
+    renderState.onCellFormatChange = fn;
 }
 
 const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
@@ -47,6 +56,8 @@ function* allSelected() {
 
 function cellType(st) {
     // Cases:
+    // 5. Cell was parented by another cell
+    if (st.parent) return 'parented';
     // 1. Cell is empty
     if (st.code === undefined) return 'empty';
     // 2. Cell contains constant
@@ -56,20 +67,18 @@ function cellType(st) {
     // 4. Cell evaluates to list or table
     if (st.result && st.result.shape.length === 1) return 'list';
     if (st.result && st.result.shape.length > 1) return 'table';
-    // 5. Cell was parented by another cell
-    if (st.parent) return 'parented';
     return 'unknown';
 }
 
 function displayCell(st) {
     if (st.result && st.result.data.length >= 1) {
-        if (st.unit === '%') {
+        if ((st.format || {})['%'] && Object.keys(st.result.unit || {}).length === 0) {
             return new Intl.NumberFormat('en-US', { style: 'percent' }).format(st.result.data[0]);
-        } else if (st.unit === 'USD') {
+        } else if ((st.result.unit || {})['USD']) {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(st.result.data[0]);
-        } else if (st.unit === 'CAD') {
+        } else if ((st.result.unit || {})['CAD']) {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'CAD' }).format(st.result.data[0]);
-        } else if (st.unit === 'EUR') {
+        } else if ((st.result.unit || {})['EUR']) {
             return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(st.result.data[0]);
         } else {
             return `${st.result.data[0]}`;
@@ -197,10 +206,12 @@ function refresh() {
         const infos = document.createElement('div');
         infos.className = 'infos';
 
+        const st = state.cells[id];
         const selected = renderState.selection.startRow ?
             `R${Math.min(renderState.selection.startRow, renderState.selection.endRow)}C${Math.min(renderState.selection.startCol, renderState.selection.endCol)}:R${Math.max(renderState.selection.startRow, renderState.selection.endRow)}C${Math.max(renderState.selection.startCol, renderState.selection.endCol)}` :
             id;
-        for (const info of [selected, state.cells[id].unit || NULL_TYPE, cellType(state.cells[id])]) {
+        const effectiveUnit = (st.result || {}).unit || NULL_TYPE;
+        for (const info of [selected, Object.keys(effectiveUnit).join('•'), cellType(state.cells[id])]) {
             const infoEl = document.createElement('span');
             infoEl.className = 'info';
             infoEl.innerHTML = info;
@@ -212,18 +223,42 @@ function refresh() {
         const dimensions = document.createElement('div');
         dimensions.className = 'dimensions';
 
-        for (const dim of [NULL_TYPE, '%', 'USD', 'CAD', 'EUR']) {
+        for (const dim of [NULL_TYPE, 'USD', 'CAD', 'EUR']) {
             const dimEl = document.createElement('span');
-            dimEl.className = `dimension ${(state.cells[id].unit || NULL_TYPE) === dim ? 'active' : ''}`;
+            dimEl.className = `dimension ${effectiveUnit[dim] ? 'active' : ''}`;
             dimEl.innerHTML = dim;
             dimEl.addEventListener('click', () => {
-                renderState.onCellUnitChange(id, dim);
+                if (dim === NULL_TYPE) {
+                    renderState.onCellUnitChange(id, {});
+                } else {
+                    renderState.onCellUnitChange(id, Object.fromEntries([[dim, 1]]));
+                }
                 requestRefresh(null);
             });
             dimensions.appendChild(dimEl);
         }
 
         root.appendChild(dimensions);
+
+        const formats = document.createElement('div');
+        formats.className = 'formats';
+
+        for (const dim of [NULL_TYPE, '%']) {
+            const dimEl = document.createElement('span');
+            dimEl.className = `format ${(st.format || {})[dim] ? 'active' : ''}`;
+            dimEl.innerHTML = dim;
+            dimEl.addEventListener('click', () => {
+                if (dim === NULL_TYPE) {
+                    renderState.onCellFormatChange(id, {});
+                } else {
+                    renderState.onCellFormatChange(id, Object.fromEntries([[dim, 1]]));
+                }
+                requestRefresh(null);
+            });
+            formats.appendChild(dimEl);
+        }
+
+        root.appendChild(formats);
 
         document.getElementById('contextual').replaceWith(root);
     }
@@ -240,24 +275,34 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
             requestRefresh(null);
         }
 
-        const focusEl = document.querySelector('.cell:focus');
-        if (!focusEl) {
-            return;
-        }
+        const focusEl = document.querySelector('textarea.cell:focus');
+        const selectEl = (
+            !focusEl &&
+            renderState.selection.startRow !== null &&
+            renderState.selection.startRow === renderState.selection.endRow &&
+            renderState.selection.startCol === renderState.selection.endCol &&
+            document.getElementById(`R${renderState.selection.startRow}C${renderState.selection.startCol}`)
+        );
 
-        const row = parseInt(focusEl.dataset.row, 10);
-        const col = parseInt(focusEl.dataset.col, 10);
         if (e.key === 'Enter') {
-            commitCell(focusEl);
-            requestBlur(focusEl.id);
+            if (focusEl) {
+                commitCell(focusEl);
+                requestBlur(focusEl.id);
+            } else if (selectEl) {
+                requestFocus(selectEl.id);
+            }
             e.preventDefault();
         } else if (e.key === 'Escape') {
-            requestBlur(focusEl.id);
+            if (focusEl) {
+                requestBlur(focusEl.id);
+            }
             e.preventDefault();
-        } else if (e.key === 'Tab') {
+        } else if (e.key === 'Tab' && focusEl) {
+            const row = parseInt(focusEl.dataset.row, 10);
+            const col = parseInt(focusEl.dataset.col, 10);
             if (e.shiftKey) {
                 requestBlur(focusEl.id);
-                if (focusCol >= 0) {
+                if (col >= 0) {
                     requestFocus(`R${row}C${col - 1}`);
                 }
             } else {
@@ -267,26 +312,44 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
             }
             e.preventDefault();
         } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown' || e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            commitCell(focusEl);
-            if (e.key === 'ArrowUp') {
-                requestBlur(focusEl.id);
-                requestFocus(`R${row - 1}C${col}`);
-            } else if (e.key === 'ArrowDown') {
-                requestBlur(focusEl.id);
-                requestFocus(`R${row + 1}C${col}`);
-            } else if (e.key === 'ArrowLeft') {
-                requestBlur(focusEl.id);
-                requestFocus(`R${row}C${col - 1}`);
-            } else if (e.key === 'ArrowRight') {
-                requestBlur(focusEl.id);
-                requestFocus(`R${row}C${col + 1}`);
+            if (selectEl) {
+                const { row, col } = parseId(selectEl.id);
+                if (e.key === 'ArrowUp') {
+                    requestClearSelect();
+                    requestSelect(`R${row - 1}C${col}`);
+                } else if (e.key === 'ArrowDown') {
+                    requestClearSelect();
+                    requestSelect(`R${row + 1}C${col}`);
+                } else if (e.key === 'ArrowLeft') {
+                    requestClearSelect();
+                    requestSelect(`R${row}C${col - 1}`);
+                } else if (e.key === 'ArrowRight') {
+                    requestClearSelect();
+                    requestSelect(`R${row}C${col + 1}`);
+                }
+                e.preventDefault();
             }
-            e.preventDefault();
-        } else if (e.key === 'Backspace' && e.shiftKey) {
-            deleteCell(focusEl);
-            if (col > 0) {
-                requestBlur(focusEl.id);
-                requestFocus(`R${row}C${col - 1}`);
+        } else if (e.key === 'Backspace') {
+            if (focusEl && e.shiftKey) {
+                const row = parseInt(focusEl.dataset.row, 10);
+                const col = parseInt(focusEl.dataset.col, 10);
+                deleteCell(focusEl);
+                if (col > 0) {
+                    requestBlur(focusEl.id);
+                    requestFocus(`R${row}C${col - 1}`);
+                }
+            } else if (selectEl) {
+                const { row, col } = parseId(selectEl.id);
+                deleteCell(selectEl);
+                if (col > 0) {
+                    requestClearSelect();
+                    requestSelect(`R${row}C${col - 1}`);
+                }
+            } else if (renderState.selection.startRow !== null) {
+                for (const sel of allSelected()) {
+                    const el = document.getElementById(sel);
+                    if (el) deleteCell(el);
+                }
             }
         }
     }, { capture: true });
@@ -306,6 +369,7 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
 
             const focusEl = document.querySelector('.cell:focus');
             if (focusEl && focusEl.classList.contains('cell')) {
+                commitCell(focusEl);
                 requestBlur(focusEl.id);
             }
 
@@ -336,7 +400,14 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
                 e.preventDefault();
             } else if (el !== null) {
                 requestClearSelect();
-                requestFocus(el.id);
+
+                if (el.id === renderState.lastClick.id) {
+                    requestFocus(el.id);
+                } else {
+                    requestSelect(el.id);
+                    renderState.lastClick.timeMs = +new Date();
+                    renderState.lastClick.id = el.id;
+                }
             }
         } else if (e.metaKey === true && el !== null) {
             renderState.contextual = { x: e.x, y: e.y, row: el.dataset.row, col: el.dataset.col };
@@ -347,5 +418,5 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
 }
 
 if (typeof module !== 'undefined') {
-    module.exports = { renderGrid, bindGridListeners, bindCellUnitChange };
+    module.exports = { renderGrid, bindGridListeners, bindCellUnitChange, bindCellFormatChange };
 }

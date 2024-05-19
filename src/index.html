@@ -16,10 +16,10 @@
     let state = JSON.parse(localStorage.getItem('jsheet')) || { cells: {} };
     if (state.cells === undefined) state.cells = {};
     for (const key of Object.keys(state.cells)) {
-        const { code, result, inputs, parent, unit } = state.cells[key];
+        const { code, result, inputs, parent, unit, format } = state.cells[key];
         state.cells[key] = {
-            code, inputs, parent, unit,
-            result: result ? new JArray(result.shape, result.data) : undefined
+            code, inputs, parent, unit, format,
+            result: result ? new JArray(result.shape, result.data, result.unit) : undefined
         };
     }
 
@@ -37,7 +37,7 @@
             if (seen.has(id)) continue;
             seen.add(id);
 
-            const st = state.cells[id];
+            const st = state.cells[id] || {};
             if (st.code) {
                 setCellCode(id, st.code);
                 unrollCodeCell(id);
@@ -51,7 +51,12 @@
     }
 
     function setCellCode(id, code) {
-        const st = state.cells[id] = { code, inputs: [] };
+        const st = state.cells[id] = {
+            code,
+            inputs: [],
+            unit: (state.cells[id] || {}).unit || null,
+            format: (state.cells[id] || {}).format
+        };
 
         try {
             st.result = runJFragment(code, symbol => {
@@ -62,6 +67,7 @@
                         throw new Error('Not a valid symbol: ', symbol);
                     }
                     let data = [];
+                    let unit = null;
                     for (let i = start.row; i <= end.row; i++) {
                         for (let j = start.col; j <= end.col; j++) {
                             const iid = `R${i}C${j}`;
@@ -72,9 +78,10 @@
                                 st.inputs.push(iid);
                             }
                             data.push(ist.result.only());
+                            unit = ist.result.unit;
                         }
                     }
-                    return new JArray([end.row - start.row + 1, end.col - start.col + 1], data);
+                    return new JArray([end.row - start.row + 1, end.col - start.col + 1], data, unit);
                 } else if (split.length === 1) {
                     const ist = state.cells[symbol];
                     if (ist.result && !st.inputs.includes(symbol)) {
@@ -85,9 +92,12 @@
                     return null;
                 }
             });
+            if (st.unit) {
+                st.result.unit = st.unit;
+            }
         } catch (e) {
             console.log('Error running J fragment:', e.message)
-            st.result = new JArray([], [code]);
+            st.result = new JArray([], [code], st.unit);
         }
 
         requestRefresh(id);
@@ -113,7 +123,7 @@
         for (let i = 0; i < result.data.length; i++) {
             const dimSizes = result.shape.reduce((acc, val) => acc.concat(val * acc[acc.length - 1] || 1), []);
             const coords = result.shape.reduce(([coords, idx], dimSize) => [coords.concat(idx % dimSize), Math.floor(idx / dimSize)], [[], i])[0];
-            setCellResult(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, new JArray([], [result.data[i]]), id);
+            setCellResult(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, new JArray([], [result.data[i]], result.unit), id);
         }
     }
 
@@ -146,6 +156,15 @@
 
     bindCellUnitChange((cell, unit) => {
         state.cells[cell].unit = unit;
+        computeState.dirty.add(cell);
+        requestRefresh(cell);
+        refreshEffects();
+        localStorage.setItem('jsheet', JSON.stringify(state));
+    });
+
+    bindCellFormatChange((cell, format) => {
+        state.cells[cell].format = format;
+        computeState.dirty.add(cell);
         requestRefresh(cell);
         refreshEffects();
         localStorage.setItem('jsheet', JSON.stringify(state));
