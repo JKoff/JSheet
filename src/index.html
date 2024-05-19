@@ -50,7 +50,7 @@
                 setCellCode(id, st.code);
                 unrollCodeCell(id);
             } else {
-                setCellResult(id, st.result, st.parent);
+                setCellResult(id, st.result, st.parent, st.format);
             }
 
             stack.push(...downstreamCells(id));
@@ -124,15 +124,15 @@
         computeState.dirty.add(id);
     }
 
-    function setCellResult(id, result, parentId) {
-        state.cells[id] = { result, parent: parentId };
+    function setCellResult(id, result, parentId, format) {
+        state.cells[id] = { result, parent: parentId, format };
 
         requestRefresh(id);
         computeState.dirty.add(id);
     }
 
     function unrollCodeCell(id) {
-        const { result, code } = state.cells[id];
+        const { result, code, format } = state.cells[id];
         if (result === undefined) {
             return;
         }
@@ -143,7 +143,7 @@
         for (let i = 0; i < result.data.length; i++) {
             const dimSizes = result.shape.reduce((acc, val) => acc.concat(val * acc[acc.length - 1] || 1), []);
             const coords = result.shape.reduce(([coords, idx], dimSize) => [coords.concat(idx % dimSize), Math.floor(idx / dimSize)], [[], i])[0];
-            setCellResult(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, new JArray([], [result.data[i]], result.unit), id);
+            setCellResult(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, new JArray([], [result.data[i]], result.unit), id, format);
         }
     }
 
