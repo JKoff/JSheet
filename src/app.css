@@ -14,19 +14,20 @@ body {
     position: relative;
     resize: none;
 }
-.cell:not([data-type=empty])::after {
+/* .cell:not([data-type=empty])::after {
     content: " ";
     position: absolute; bottom: 0; left: 0; right: 0;
     height: 0.1em;
-}
+} */
+/* .cell[data-type="constant"] {}
+.cell[data-type="atom"] {}
+.cell[data-type="list"] {}
+.cell[data-type="table"] {}
+.cell[data-type="parented"] {} */
 /* .cell[data-type="constant"]::after { background-color: oklch(70% 0.3 0); } */
 /* .cell[data-type="atom"]::after { background-color: oklch(70% 0.3 72); } */
-.cell[data-type="atom"] { opacity: 0.7; }
-.cell[data-type="list"] { opacity: 0.7; }
-.cell[data-type="table"] { opacity: 0.7; }
 /* .cell[data-type="list"]::after { background-color: oklch(70% 0.3 144); }
 .cell[data-type="table"]::after { background-color: oklch(70% 0.3 216); } */
-.cell[data-type="parented"] { background-color: oklch(98% 0 0); }
 
 textarea.cell { padding: 0.2em; }
 div.cell { display: grid; grid: 100% / 1fr auto; }
