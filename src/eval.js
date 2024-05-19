@@ -220,7 +220,7 @@ function reduce(stack, lookupFn, exportFn) {
         exportFn(stack[0], s2)
         stack.splice(0, 3);
         return true;
-    } else if (stack[0] === BEGIN && classify(stack[1] === 'N') && stack.length === 2) {
+    } else if (stack[0] === BEGIN && classify(stack[1] === 'N')) {
         // -1 I guess this isn't parsing or reduction per se, but when are we
         // supposed to translate '123' into an atom with value 123?
         const [reducedp, s1] = evaluateToken(stack[1], lookupFn);
