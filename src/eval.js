@@ -39,7 +39,11 @@ class JArray {
         const processedFrames = frames.map(fn);
 
         const resultShape = this.shape.slice(0, this.shape.length - rank).concat(...processedFrames[0].shape);
-        const result = new JArray(resultShape, Array.prototype.concat(...processedFrames.map(frame => frame.data)), this.unit);
+        const result = new JArray(
+            resultShape,
+            Array.prototype.concat(...processedFrames.map(frame => frame.data)),
+            processedFrames.length > 0 ? processedFrames[0].unit : null
+        );
 
         return result;
     }
@@ -140,6 +144,12 @@ class VerbBuilder {
     }
 }
 
+function multiplyUnits(c, arg) {
+    return Object.fromEntries(Object.entries(arg || {}).map(([k, v]) => {
+        return [k, c * v];
+    }));
+}
+
 function sumUnits(lhs, rhs) {
     const res = {};
     Object.entries(lhs || {}).forEach(([k, v]) => res[k] = (res[k] || 0) + v);
@@ -149,6 +159,10 @@ function sumUnits(lhs, rhs) {
 
 new VerbBuilder('i.').withMonad(x => new JArray([x.only()], new Array(x.only()).fill(0).map((_, idx) => idx), x.unit), 1).register();
 new VerbBuilder('>:').withMonad(x => atom(x.only() + 1, x.unit), 0).register();
+
+new VerbBuilder('%').withMonad(x => atom(1 / x.only(), multiplyUnits(-1, x.unit)), 0).register();
+new VerbBuilder('%').withDyad((x, y) => atom(x.only() / y.only(), sumUnits(x.unit, multiplyUnits(-1, y.unit))), 0, 0).register();
+
 new VerbBuilder('+').withDyad((x, y) => atom(x.only() + y.only(), x.unit), 0, 0).register();
 new VerbBuilder('*').withDyad((x, y) => atom(x.only() * y.only(), sumUnits(x.unit, y.unit)), 0, 0).register();
 new VerbBuilder(',').withDyad((x, y) => {

@@ -40,6 +40,12 @@ describe('runJFragment', function () {
   it('can construct a sequence by appending', function () {
     expect(fn('1 , 2 , 3')).toMatchObject({ shape: [3], data: [1, 2, 3] });
   });
+  it('can reciprocal a number', function () {
+    expect(fn('% 10')).toMatchObject({ data: [0.1] });
+  });
+  it('can divide two numbers', function () {
+    expect(fn('10 % 2')).toMatchObject({ data: [5] });
+  });
   // it('can sum two lists of integers', function () {
   //   expect(runJFragment('0 1 2 + 00 10 20', () => null)).toMatchObject({ shape: [3], data: [0, 11, 22] });
   // });
