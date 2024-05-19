@@ -73,7 +73,9 @@ function cellType(st) {
 }
 
 function displayCell(st) {
-    if (st.result && st.result.data.length >= 1) {
+    if (st.lastExportName) {
+        return st.lastExportName;
+    } else if (st.result && st.result.data.length >= 1) {
         if ((st.format || {})['%'] && Object.keys(st.result.unit || {}).length === 0) {
             return new Intl.NumberFormat('en-US', { style: 'percent' }).format(st.result.data[0]);
         } else if ((st.result.unit || {})['USD']) {
@@ -373,7 +375,7 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
     });
 
     rootEl.addEventListener('mousedown', e => {
-        if (e.metaKey === false && e.target.classList.contains('cell')) {
+        if (e.metaKey === false && e.target.classList.contains('cell') && !(e.target instanceof HTMLTextAreaElement)) {
             renderState.selection.mousedown = true;
 
             requestClearSelect();

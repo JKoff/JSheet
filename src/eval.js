@@ -182,51 +182,78 @@ function classify(token) {
     }
 }
 
-function reduce(stack) {
+function reduce(stack, lookupFn, exportFn) {
     if (stack.length <= 1) {
         return false;
     }
     /*
-        | leftmost stack word	| other stack words | action |
-        | § =. =: (             | V | N | anything  | 0 Monad |
-        | § =. =: ( A V N       | V | V | N         | 1 Monad |
-        | § =. =: ( A V N       | N | V | N         | 2 Dyad |
+        | leftmost stack word	|      other stack words      | action  |
+        | § =. =: (             | V     | N       | anything  | 0 Monad |
+        | § =. =: ( A V N       | V     | V       | N         | 1 Monad |
+        | § =. =: ( A V N       | N     | V       | N         | 2 Dyad  |
+        | name N                | =. =:	| C A V N | anything  | 8 Is    |
     */
     if ([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 && classify(stack[1]) === 'V' && classify(stack[2]) === 'N' &&
         monads[stack[1]]) {
-        stack.splice(1, 2, monads[stack[1]].apply(stack[2]));
+        // 0 Monad
+        const [_, s2] = evaluateToken(stack[2], lookupFn);
+        stack.splice(1, 2, monads[stack[1]].apply(s2));
         return true;
     } else if (([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 || ['A', 'V', 'N'].indexOf(classify(stack[0])) !== -1) &&
         classify(stack[1]) === 'V' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
         monads[stack[2]]) {
-        stack.splice(2, 2, monads[stack[2]].apply(stack[3]));
+        // 1 Monad
+        const [_, s3] = evaluateToken(stack[3], lookupFn);
+        stack.splice(2, 2, monads[stack[2]].apply(s3));
         return true;
     } else if (([BEGIN, '=.', '=:', '('].indexOf(stack[0]) !== -1 || ['A', 'V', 'N'].indexOf(classify(stack[0])) !== -1) &&
         classify(stack[1]) === 'N' && classify(stack[2]) === 'V' && classify(stack[3]) === 'N' &&
         dyads[stack[2]]) {
-        stack.splice(1, 3, dyads[stack[2]].apply(stack[1], stack[3]));
+        // 2 Dyad
+        const [_1, s1] = evaluateToken(stack[1], lookupFn);
+        const [_2, s3] = evaluateToken(stack[3], lookupFn);
+        stack.splice(1, 3, dyads[stack[2]].apply(s1, s3));
         return true;
+    } else if (stack[0].length > 0 && ['=.', '=:'].indexOf(stack[1]) !== -1 && ['C', 'A', 'V', 'N'].indexOf(classify(stack[2])) !== -1) {
+        // 8 Is
+        const [_, s2] = evaluateToken(stack[2], lookupFn);
+        exportFn(stack[0], s2)
+        stack.splice(0, 3);
+        return true;
+    } else if (stack[0] === BEGIN && classify(stack[1] === 'N') && stack.length === 2) {
+        // -1 I guess this isn't parsing or reduction per se, but when are we
+        // supposed to translate '123' into an atom with value 123?
+        const [reducedp, s1] = evaluateToken(stack[1], lookupFn);
+        stack.splice(1, 2, s1);
+        return reducedp;
     }
 
     return false;
 }
 
+// Returns a tuple containing:
+// - Whether any evaluation was necessary.
+// - The evaluated token.
 function evaluateToken(token, lookupFn) {
-    if (token === BEGIN) {
-        return token;
+    let lookup;
+    if (token instanceof JArray) {
+        return [false, token];
+    } else if (token === BEGIN) {
+        return [false, token];
     } else if (!isNaN(parseInt(token, 10))) {
-        return new JArray([], [parseInt(token, 10)]);
+        return [true, new JArray([], [parseInt(token, 10)])];
     } else if (verbs[token] !== undefined) {
-        return token;
-    } else if (lookupFn(token) !== null) {
-        const value = lookupFn(token);
-        return value instanceof JArray ? value : new JArray([], [value]);
+        return [false, token];
+    } else if (['=:'].indexOf(token) !== -1) {
+        return [false, token];
+    } else if ((lookup = lookupFn(token)) !== null) {
+        return [true, lookup instanceof JArray ? lookup : new JArray([], [lookup])];
     } else {
         throw new Error(`Unknown symbol: ${token}`);
     }
 }
 
-function runJFragment(code, lookupFn) {
+function runJFragment(code, lookupFn, exportFn) {
     let debugInfo = [];
 
     const tokens = tokenize(code);
@@ -237,9 +264,8 @@ function runJFragment(code, lookupFn) {
     const stack = [];
     while (tokens.length > 0) {
         const tail = tokens.pop();
-        const tail2 = evaluateToken(tail, lookupFn);
-        stack.splice(0, 0, tail2);
-        while (reduce(stack)) {
+        stack.splice(0, 0, tail);
+        while (reduce(stack, lookupFn, exportFn)) {
             debugInfo.push('Stack', JSON.stringify(stack));
         }
     }
