@@ -16,9 +16,9 @@
     let state = JSON.parse(localStorage.getItem('jsheet')) || { cells: {} };
     if (state.cells === undefined) state.cells = {};
     for (const key of Object.keys(state.cells)) {
-        const { code, display, result, inputs, parent } = state.cells[key];
+        const { code, result, inputs, parent, unit } = state.cells[key];
         state.cells[key] = {
-            code, display, inputs, parent,
+            code, inputs, parent, unit,
             result: result ? new JArray(result.shape, result.data) : undefined
         };
     }
@@ -42,7 +42,7 @@
                 setCellCode(id, st.code);
                 unrollCodeCell(id);
             } else {
-                setCellDisplay(id, st.display, st.result, st.parent);
+                setCellResult(id, st.result, st.parent);
             }
 
             stack.push(...downstreamCells(id));
@@ -77,11 +77,10 @@
                     return new JArray([end.row - start.row + 1, end.col - start.col + 1], data);
                 } else if (split.length === 1) {
                     const ist = state.cells[symbol];
-                    const val = ist.result || parseInt(ist.display, 10) || null;
-                    if (val !== null && !st.inputs.includes(symbol)) {
+                    if (ist.result && !st.inputs.includes(symbol)) {
                         st.inputs.push(symbol);
                     }
-                    return val;
+                    return ist.result;
                 } else {
                     return null;
                 }
@@ -95,8 +94,8 @@
         computeState.dirty.add(id);
     }
 
-    function setCellDisplay(id, display, result, parentId) {
-        state.cells[id] = { display, result, parent: parentId };
+    function setCellResult(id, result, parentId) {
+        state.cells[id] = { result, parent: parentId };
 
         requestRefresh(id);
         computeState.dirty.add(id);
@@ -114,7 +113,7 @@
         for (let i = 0; i < result.data.length; i++) {
             const dimSizes = result.shape.reduce((acc, val) => acc.concat(val * acc[acc.length - 1] || 1), []);
             const coords = result.shape.reduce(([coords, idx], dimSize) => [coords.concat(idx % dimSize), Math.floor(idx / dimSize)], [[], i])[0];
-            setCellDisplay(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, `${result.data[i]}`, new JArray([], [result.data[i]]), id);
+            setCellResult(`R${row + (coords[1] || 0)}C${col + (coords[0] || 0) + 1}`, new JArray([], [result.data[i]]), id);
         }
     }
 
@@ -144,6 +143,13 @@
 
     document.querySelector('#grid').replaceWith(renderGrid(state));
     bindGridListeners(document.body, commitCell, deleteCell);
+
+    bindCellUnitChange((cell, unit) => {
+        state.cells[cell].unit = unit;
+        requestRefresh(cell);
+        refreshEffects();
+        localStorage.setItem('jsheet', JSON.stringify(state));
+    });
 </script>
 </body>
 </html>

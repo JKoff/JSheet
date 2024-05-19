@@ -1,3 +1,5 @@
+const NULL_TYPE = '&#8709;';
+
 let renderState = {
     focus: null,
     dirty: new Set(),
@@ -9,8 +11,13 @@ let renderState = {
         endCol: null,
     },
     contextual: null,
+    onCellUnitChange: () => {},
 };
 let refreshTimeout = null;
+
+function bindCellUnitChange(fn) {
+    renderState.onCellUnitChange = fn;
+}
 
 const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
 function parseId(id) {
@@ -38,6 +45,41 @@ function* allSelected() {
     }
 }
 
+function cellType(st) {
+    // Cases:
+    // 1. Cell is empty
+    if (st.code === undefined) return 'empty';
+    // 2. Cell contains constant
+    if (st.result && `${st.result.data[0]}` === st.code) return 'constant';
+    // 3. Cell evaluates to atom
+    if (st.result && `${st.result.data[0]}` !== st.code) return 'atom';
+    // 4. Cell evaluates to list or table
+    if (st.result && st.result.shape.length === 1) return 'list';
+    if (st.result && st.result.shape.length > 1) return 'table';
+    // 5. Cell was parented by another cell
+    if (st.parent) return 'parented';
+    return 'unknown';
+}
+
+function displayCell(st) {
+    if (st.result && st.result.data.length >= 1) {
+        if (st.unit === '%') {
+            return new Intl.NumberFormat('en-US', { style: 'percent' }).format(st.result.data[0]);
+        } else if (st.unit === 'USD') {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(st.result.data[0]);
+        } else if (st.unit === 'CAD') {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'CAD' }).format(st.result.data[0]);
+        } else if (st.unit === 'EUR') {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(st.result.data[0]);
+        } else {
+            return `${st.result.data[0]}`;
+        }
+    } else if (st.code) {
+        return st.code;
+    }
+    return '';
+}
+
 function renderCell(state, row, col, focus, selected) {
     const cell = document.createElement(focus ? 'textarea' : 'div');
     cell.id = `R${row}C${col}`;
@@ -52,23 +94,13 @@ function renderCell(state, row, col, focus, selected) {
     }
 
     if (focus) {
-        cell.value = st.code || st.display || '';
+        cell.value = st.code || '';
     } else {
-        cell.innerHTML = st.display || st.code || '';
+        cell.innerHTML = displayCell(st);
     }
 
-    // Cases:
-    // 1. Cell is empty
-    if (st.code === undefined) cell.dataset.type = 'empty';
-    // 2. Cell contains constant
-    if (st.result && `${st.result.data[0]}` === st.code) cell.dataset.type = 'constant';
-    // 3. Cell evaluates to atom
-    if (st.result && `${st.result.data[0]}` !== st.code) cell.dataset.type = 'atom';
-    // 4. Cell evaluates to list or table
-    if (st.result && st.result.shape.length === 1) cell.dataset.type = 'list';
-    if (st.result && st.result.shape.length > 1) cell.dataset.type = 'table';
-    // 5. Cell was parented by another cell
-    if (st.parent) cell.dataset.type = 'parented';
+    cell.dataset.type = cellType(st);
+
     return cell;
 }
 
@@ -160,10 +192,15 @@ function refresh() {
         root.style.top = `${y}px`;
         root.style.left = `${x}px`;
 
+        const id = `R${row}C${col}`;
+
         const infos = document.createElement('div');
         infos.className = 'infos';
 
-        for (const info of [`R${row}C${col}`]) {
+        const selected = renderState.selection.startRow ?
+            `R${Math.min(renderState.selection.startRow, renderState.selection.endRow)}C${Math.min(renderState.selection.startCol, renderState.selection.endCol)}:R${Math.max(renderState.selection.startRow, renderState.selection.endRow)}C${Math.max(renderState.selection.startCol, renderState.selection.endCol)}` :
+            id;
+        for (const info of [selected, state.cells[id].unit || NULL_TYPE, cellType(state.cells[id])]) {
             const infoEl = document.createElement('span');
             infoEl.className = 'info';
             infoEl.innerHTML = info;
@@ -172,14 +209,17 @@ function refresh() {
 
         root.appendChild(infos);
 
-
         const dimensions = document.createElement('div');
         dimensions.className = 'dimensions';
 
-        for (const dim of ['&#8709;', '%', 'USD', 'CAD', 'EUR']) {
+        for (const dim of [NULL_TYPE, '%', 'USD', 'CAD', 'EUR']) {
             const dimEl = document.createElement('span');
-            dimEl.className = 'dimension';
+            dimEl.className = `dimension ${(state.cells[id].unit || NULL_TYPE) === dim ? 'active' : ''}`;
             dimEl.innerHTML = dim;
+            dimEl.addEventListener('click', () => {
+                renderState.onCellUnitChange(id, dim);
+                requestRefresh(null);
+            });
             dimensions.appendChild(dimEl);
         }
 
@@ -259,7 +299,7 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
     });
 
     rootEl.addEventListener('mousedown', e => {
-        if (e.metaKey === false) {
+        if (e.metaKey === false && e.target.classList.contains('cell')) {
             renderState.selection.mousedown = true;
 
             requestClearSelect();
@@ -307,5 +347,5 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
 }
 
 if (typeof module !== 'undefined') {
-    module.exports = { renderGrid, bindGridListeners };
+    module.exports = { renderGrid, bindGridListeners, bindCellUnitChange };
 }

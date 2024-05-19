@@ -41,17 +41,29 @@ div.cell .code + .display { background-color: oklch(70% 0.1 206 / 0.1); } */
 
 #contextual {
     display: none;
-    border: 1px solid black;
+    background-color: white;
+    border: 1px solid oklch(70% 0.1 206 / 0.1);
     position: absolute;
 
-    padding: 0.5rem;
     grid-gap: 0.5rem;
+}
+
+#contextual .infos {
+    background-color: oklch(70% 0.1 206 / 0.1);
+    padding: 0.5rem;
+
+    display: grid;
+    grid: auto / 2fr 1fr 1fr;
+    grid-gap: 2rem;
 }
 
 #contextual .dimensions {
     font-size: 0.8rem;
-    
+    padding: 0.5rem;
+
     display: grid;
     grid: auto / repeat(3, 1fr);
-    grid-gap: 0.5rem;
 }
+
+#contextual .dimensions .dimension { padding: 0.5em; text-align: center; }
+#contextual .dimensions .dimension.active { background-color: oklch(70% 0.1 206 / 0.1); }
