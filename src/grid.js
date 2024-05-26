@@ -17,6 +17,7 @@ let renderState = {
     contextual: null,
     onCellUnitChange: () => {},
     onCellFormatChange: () => {},
+    onCellAction: () => {},
 };
 let refreshTimeout = null;
 
@@ -26,6 +27,10 @@ function bindCellUnitChange(fn) {
 
 function bindCellFormatChange(fn) {
     renderState.onCellFormatChange = fn;
+}
+
+function bindCellAction(fn) {
+    renderState.onCellAction = fn;
 }
 
 const parseIdRE = /R(?<row>[\-0-9]+)C(?<col>[\-0-9]+)/;
@@ -75,7 +80,7 @@ function cellType(st) {
 function displayCell(st) {
     if (st.lastExportName) {
         return st.lastExportName;
-    } else if (st.result && st.result.data.length >= 1) {
+    } else if (st.result && st.result.data.length === 1) {
         if ((st.format || {})['%'] && Object.keys(st.result.unit || {}).length === 0) {
             return new Intl.NumberFormat('en-US', { style: 'percent' }).format(st.result.data[0]);
         } else if ((st.result.unit || {})['USD']) {
@@ -89,6 +94,18 @@ function displayCell(st) {
         }
     } else if (st.code) {
         return st.code;
+    } else if (st.result && st.result.data.length >= 1) {
+        if ((st.format || {})['%'] && Object.keys(st.result.unit || {}).length === 0) {
+            return new Intl.NumberFormat('en-US', { style: 'percent' }).format(st.result.data[0]);
+        } else if ((st.result.unit || {})['USD']) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(st.result.data[0]);
+        } else if ((st.result.unit || {})['CAD']) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'CAD' }).format(st.result.data[0]);
+        } else if ((st.result.unit || {})['EUR']) {
+            return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'EUR' }).format(st.result.data[0]);
+        } else {
+            return `${st.result.data[0]}`;
+        }
     }
     return '';
 }
@@ -273,6 +290,22 @@ function refresh() {
 
         root.appendChild(formats);
 
+        const actions = document.createElement('div');
+        actions.className = 'actions';
+
+        for (const dim of ['DefineAsRightConsecutive']) {
+            const dimEl = document.createElement('span');
+            dimEl.className = `action`;
+            dimEl.innerHTML = dim;
+            dimEl.addEventListener('click', () => {
+                renderState.onCellAction(id, dim);
+                requestRefresh(null);
+            });
+            actions.appendChild(dimEl);
+        }
+
+        root.appendChild(actions);
+
         document.getElementById('contextual').replaceWith(root);
     }
 
@@ -368,17 +401,20 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
     }, { capture: true });
 
     rootEl.addEventListener('blur', e => {
-        if (e.target.classList.contains('cell')) {
+        if (e.target && e.target.classList && e.target.classList.contains('cell')) {
             commitCell(e.target);
             requestBlur(e.target.id);
         }
     });
 
-    rootEl.addEventListener('mousedown', e => {
-        if (e.metaKey === false && e.target.classList.contains('cell') && !(e.target instanceof HTMLTextAreaElement)) {
+    rootEl.addEventListener('pointerdown', e => {
+        if (e.metaKey === false && e.button !== /*RMB*/2 && e.target.classList.contains('cell') && !(e.target instanceof HTMLTextAreaElement)) {
             renderState.selection.mousedown = true;
 
             requestClearSelect();
+
+            renderState.contextual = null;
+            requestRefresh(null);
 
             const focusEl = document.querySelector('.cell:focus');
             if (focusEl && focusEl.classList.contains('cell')) {
@@ -392,13 +428,16 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
             }
         }
     });
+    rootEl.addEventListener('contextmenu', e => {
+        e.preventDefault();
+    });
     rootEl.addEventListener('mouseover', e => {
         if (renderState.selection.mousedown && e.target.classList.contains('cell')) {
             requestSelect(e.target.id);
             e.preventDefault();
         }
     });
-    rootEl.addEventListener('mouseup', e => {
+    rootEl.addEventListener('pointerup', e => {
         let el = null;
         if (e.target.classList.contains('cell')) {
             el = e.target;
@@ -406,7 +445,7 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
             el = e.target.parentNode;
         }
 
-        if (e.metaKey === false) {
+        if (e.metaKey === false && e.button !== /*RMB*/2) {
             renderState.selection.mousedown = false;
 
             if (Array.from(allSelected()).length > 1) {
@@ -425,7 +464,7 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
                     renderState.lastClick.id = el.id;
                 }
             }
-        } else if (e.metaKey === true && el !== null) {
+        } else if ((e.metaKey === true || e.button === /*RMB*/2) && el !== null) {
             renderState.contextual = { x: e.x, y: e.y, row: el.dataset.row, col: el.dataset.col };
             requestRefresh(null);
             e.preventDefault();
@@ -434,5 +473,11 @@ function bindGridListeners(rootEl, commitCell, deleteCell) {
 }
 
 if (typeof module !== 'undefined') {
-    module.exports = { renderGrid, bindGridListeners, bindCellUnitChange, bindCellFormatChange };
+    module.exports = {
+        renderGrid,
+        bindGridListeners,
+        bindCellUnitChange,
+        bindCellFormatChange,
+        bindCellAction,
+    };
 }

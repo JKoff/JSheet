@@ -70,7 +70,28 @@
         try {
             const lookupFn = symbol => {
                 let split;
-                if (symbol in state.exports) {
+                if (symbol === 'RightConsecutive') {
+                    let { row, col } = parseId(id);
+                    let idx = 0;
+                    let values = [];
+                    while (true) {
+                        const id = `R${row}C${col + idx + 1}`;
+                        const c = state.cells[id];
+                        if (c && c.result && c.result.shape.length === 0) {
+                            values.push(state.cells[id].result.data[0]);
+                            if (!st.inputs.includes(id)) {
+                                st.inputs.push(id);
+                            }
+                            idx++;
+                        } else {
+                            if (!st.inputs.includes(id)) {
+                                st.inputs.push(id);
+                            }
+                            break;
+                        }
+                    }
+                    return new JArray([values.length], values, st.unit);
+                } else if (symbol in state.exports) {
                     const xp = state.exports[symbol];
                     if (xp.result && !st.inputs.includes(xp.parent)) {
                         st.inputs.push(xp.parent);
@@ -130,6 +151,9 @@
     }
 
     function setCellResult(id, result, parentId, format) {
+        if (state.cells[id] && state.cells[id].code) {
+            return;
+        }
         state.cells[id] = { result, parent: parentId, format };
 
         requestRefresh(id);
@@ -177,7 +201,7 @@
     }
 
     document.querySelector('#grid').replaceWith(renderGrid(state));
-    bindGridListeners(document.body, commitCell, deleteCell);
+    bindGridListeners(window, commitCell, deleteCell);
 
     bindCellUnitChange((cell, unit) => {
         state.cells[cell].unit = unit;
@@ -193,6 +217,16 @@
         requestRefresh(cell);
         refreshEffects();
         localStorage.setItem('jsheet', JSON.stringify(state));
+    });
+
+    bindCellAction((cell, action) => {
+        if (action === 'DefineAsRightConsecutive') {
+            state.cells[cell].code = `${state.cells[cell].code} =: RightConsecutive`;
+            computeState.dirty.add(cell);
+            requestRefresh(cell);
+            refreshEffects();
+            localStorage.setItem('jsheet', JSON.stringify(state));
+        }
     });
 </script>
 </body>
