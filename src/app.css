@@ -1,4 +1,6 @@
+@charset "UTF-8";
 body {
+    font-family: math;
     margin: 0;
     display: grid;
     grid: 100vh / 100vw;
